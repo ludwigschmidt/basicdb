@@ -90,6 +90,22 @@ class BasicDB:
                     data=None):
         pass
 
+    # Upload a list of files as blobs
+    def insert_files_as_blobs(self,
+                              object_or_uuid,
+                              filenames,
+                              name_prefix=None,
+                              username=None):
+        pass
+    
+    # Upload a files in a directory as blobs
+    def insert_dir_as_blobs(self,
+                            object_or_uuid,
+                            dir,
+                            name_prefix=None,
+                            username=None):
+        pass
+
     # Load all blobs for a given object
     def get_blobs(self, object_or_uuid):
         pass
