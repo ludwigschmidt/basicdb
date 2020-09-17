@@ -1,71 +1,92 @@
-from dataclasses import dataclass
-import datetime
+import getpass
+import socket
 
-
-@dataclass
-class Object:
-    uuid: str
-    namespace: str
-    type_: str
-    time_created: datetime.datetime
-    hidden: bool
-    username: str
-    json_data: dict
-    binary_data: bytes
-    blobs: dict
-
-
-@dataclass
-class Blob:
-    uuid: str
-    parent: str
-    name: str
-    type_: str
-    size: int
-    time_created: datetime.datetime
-    hidden: bool
-    username: str
-    json_data: dict
-
-
-@dataclass
-class Relationship:
-    uuid: str
-    first: str
-    second: str
-    type_: str
+from .entities import *
+from .sql_adapter import SQLAdapter
 
 
 class BasicDB:
     def __init__(self,
-                 db_string,
-                 stash_string,
+                 sql_string=None,
+                 stash_rootdir=None,
                  namespace=None,
-                 db_kwargs=None,
-                 stash_kwargs=None,
+                 db_kwargs={},
+                 stash_kwargs={},
                  db_adapter=None,
-                 object_stash=None):
-        pass
+                 object_stash=None,
+                 username = None,
+                 include_fqdn_in_username=True):
+        if username is None:
+            if include_fqdn_in_username:
+                self.username = getpass.getuser() + '@' + socket.getfqdn()
+            else:
+                self.username = getpass.getuser()
+        else:
+            self.username = username
+        self.namespace = namespace
+        if sql_string is not None:
+            self.db_adapter = SQLAdapter(sql_string, **db_kwargs)
     
     def insert(self,
                namespace=None,
+               name=None,
                type_=None,
                username=None,
                json_data=None,
                binary_data=None,
-               blobs=None):
-        pass
+               blobs=None,
+               return_result=False):
+        if blobs is not None:
+            raise NotImplementedError
+        if username is None:
+            username = self.username
+        if namespace is None:
+            namespace = self.namespace
+        return self.db_adapter.insert_object(namespace=namespace,
+                                             name=name,
+                                             type_=type_,
+                                             username=username,
+                                             json_data=json_data,
+                                             binary_data=binary_data,
+                                             return_result=return_result)
 
     # Retrieves objects, arguments are filters
     def get(self,
-            uuid_or_uuids=None,
+            object_=None,
+            uuid=None,
+            uuids=None,
             namespace=None,
+            name=None,
+            names=None,
             type_=None,
             include_hidden=False,
             return_blobs=False,
             first_object=None,
-            second_object=None):
-        pass
+            second_object=None,
+            assert_exists=False):
+        if namespace is None:
+            namespace = self.namespace
+        if object_ is not None:
+            assert uuid is None
+            uuid = object_.uuid
+        if uuid is not None:
+            assert uuids is None
+            assert name is None
+        if name is not None:
+            assert names is None
+        if names is not None:
+            assert name is None
+        return self.db_adapter.get_object(uuid=uuid,
+                                          uuids=uuids,
+                                          namespace=namespace,
+                                          name=name,
+                                          names=names,
+                                          type_=type_,
+                                          include_hidden=include_hidden,
+                                          return_blobs=return_blobs,
+                                          first_object=first_object,
+                                          second_object=second_object,
+                                          assert_exists=assert_exists)
     
     def update(self,
                uuid_or_object,
@@ -78,6 +99,9 @@ class BasicDB:
         pass
 
     def delete(self, uuid_uuids):
+        pass
+    
+    def exists(self, uuid_or_object):
         pass
     
     # Create a new blob
