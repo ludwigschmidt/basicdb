@@ -28,6 +28,7 @@ class Blob:
     creation_time: datetime.datetime
     hidden: bool
     username: str
+    serialization: str
     json_data: dict
 
 
@@ -37,3 +38,4 @@ class Relationship:
     first: str
     second: str
     type_: str
+    hidden: bool
