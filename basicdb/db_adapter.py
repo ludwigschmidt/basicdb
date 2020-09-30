@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .basicdb import Object, Blob, Relationship
- 
+
 class DBAdapter(ABC):
     @abstractmethod
     def insert_object(self,
@@ -24,17 +23,18 @@ class DBAdapter(ABC):
                    type_,
                    include_hidden,
                    return_blobs,
-                   first_object,
-                   second_object,
+                   relationship_first,
+                   relationship_second,
+                   relationship_type,
                    assert_exists):
         pass
     
     @abstractmethod
-    def delete_object(self,
-                      uuids,
-                      hide_only,
-                      check_namespace,
-                      namespace_to_check):
+    def delete_objects(self,
+                       uuids,
+                       hide_only,
+                       check_namespace,
+                       namespace_to_check):
         pass
 
     @abstractmethod
@@ -89,9 +89,12 @@ class DBAdapter(ABC):
     def get_relationships(self,
                           *
                           uuid,
+                          uuids,
                           first,
                           second,
                           type_,
+                          namespace,
+                          filter_namespace,
                           include_hidden,
                           assert_exists):
         pass

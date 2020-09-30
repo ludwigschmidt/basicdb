@@ -14,7 +14,7 @@ def simple_test(db):
     assert res.name == 'test1'
     assert res.json_data['foo'] == 'bar'
     assert res['foo'] == 'bar'
-    assert res.namespace is None
+    assert res.namespace == db.namespace
     assert res.type_ is None
     assert not res.hidden
     assert res.binary_data is None
@@ -63,7 +63,7 @@ def simple_blob_test(db):
     loaded_blob = db.load_blob('test1')
     assert loaded_blob == blob_data
 
-    test_obj2 = db.insert(name='test2', return_result=True)
+    test_obj2 = db.insert(name='test2')
     blob_data = {'a': 0,
                  'b': b'12345',
                  'c': 100}
@@ -99,13 +99,132 @@ def simple_blob_test(db):
         assert db.load_blob('test2', k) == v
 
 
+def simple_relationship_test(db):
+    test1 = db.insert(name='test1')
+    test2 = db.insert(name='test2')
+    test3 = db.insert(name='test3')
+    db.insert_relationship(first='test1', second='test2', type_='child')
+    db.insert_relationship(first='test3', second='test2', type_='child2')
+
+    tmp = db.get_relationship(first='test1')
+    assert len(tmp) == 1
+    tmp = tmp[0]
+    assert tmp.first == test1.uuid
+    assert tmp.second == test2.uuid
+    assert tmp.type_ == 'child'
+    
+    tmp = db.get_relationship(first=test1)
+    assert len(tmp) == 1
+    tmp = tmp[0]
+    assert tmp.first == test1.uuid
+    assert tmp.second == test2.uuid
+    assert tmp.type_ == 'child'
+    
+    tmp = db.get_relationship(second='test2')
+    assert len(tmp) == 2
+    assert set([x.first for x in tmp]) == set([test1.uuid, test3.uuid])
+    assert set([x.second for x in tmp]) == set([test2.uuid])
+    assert set([x.type_ for x in tmp]) == set(['child', 'child2'])
+    
+    tmp = db.get_relationship(second='test1')
+    assert len(tmp) == 0
+
+    db.delete_relationship(db.get_relationship(first='test1', second='test2'))
+    tmp = db.get_relationship(first='test1')
+    assert len(tmp) == 0
+    
+    tmp = db.get_relationship(first='test1', include_hidden=True)
+    assert len(tmp) == 1
+    tmp = tmp[0]
+    assert tmp.first == test1.uuid
+    assert tmp.second == test2.uuid
+    assert tmp.type_ == 'child'
+    
+    tmp = db.get_relationship(second='test2')
+    assert len(tmp) == 1
+    assert set([x.first for x in tmp]) == set([test3.uuid])
+    assert set([x.second for x in tmp]) == set([test2.uuid])
+    assert set([x.type_ for x in tmp]) == set(['child2'])
+
+
+def simple_relationship_query_test(db):
+    parent1 = db.insert(name='parent1')
+    parent2 = db.insert(name='parent2')
+    parent3 = db.insert(name='parent3')
+    child1 = db.insert(name='child1')
+    child2 = db.insert(name='child2')
+    db.insert_relationship(first=parent1, second=child1)
+    db.insert_relationship(first=parent1, second=child2, type_='special')
+    db.insert_relationship(first=parent2, second=child2)
+
+    res = db.get(rel_first=parent1)
+    assert set([x.name for x in res]) == set(['child1', 'child2'])
+    
+    res = db.get(rel_first=parent1,
+                 rel_type='special')
+    assert set([x.name for x in res]) == set(['child2'])
+    
+    res = db.get(rel_first=parent2)
+    assert set([x.name for x in res]) == set(['child2'])
+    
+    res = db.get(rel_first=parent3)
+    assert set([x.name for x in res]) == set([])
+    
+    res = db.get(rel_second=child2)
+    assert set([x.name for x in res]) == set(['parent1', 'parent2'])
+    
+    res = db.get(rel_second=child1)
+    assert set([x.name for x in res]) == set(['parent1'])
+
+
 def test_simple_sqlite_fs(tmp_path):
     db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
     simple_test(db)
 
 
-def test_simple_blobs_sqlite_fs(tmp_path):
+def test_simple_namespace_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_test(db)
+
+
+def test_simple_blobs_namespace_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_blob_test(db)
+
+
+def test_simple_relationships_sqlite_fs(tmp_path):
     stash_rootdir = tmp_path / 'stash_rootdir'
     stash_rootdir.mkdir()
     db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=stash_rootdir)
-    simple_blob_test(db)
+    simple_relationship_test(db)
+
+
+def test_simple_relationships_namespace_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_relationship_test(db)
+
+
+def test_simple_relationship_queries_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=stash_rootdir)
+    simple_relationship_query_test(db)
+
+
+def test_simple_relationship_queries_namespace_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_relationship_query_test(db)

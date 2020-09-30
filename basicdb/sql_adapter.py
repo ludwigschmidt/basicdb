@@ -158,7 +158,10 @@ class SQLAdapter(DBAdapter):
                              binary_data=binary_data)
             session.add(new_obj)
         if return_result:
-            return self.get_object(uuid=new_uuid, assert_exists=True)
+            return self.get_object(uuid=new_uuid,
+                                   assert_exists=True,
+                                   filter_namespace=False,
+                                   convert_to_public_class=True)
     
     def get_object(self,
                    uuid=None,
@@ -169,14 +172,18 @@ class SQLAdapter(DBAdapter):
                    type_=None,
                    include_hidden=False,
                    return_blobs=False,
-                   first_object=None,
-                   second_object=None,
+                   relationship_first=None,
+                   relationship_second=None,
+                   relationship_type=None,
                    assert_exists=False,
                    filter_namespace=True,
                    convert_to_public_class=True,
                    session=None):
-        if return_blobs or first_object is not None or second_object is not None:
-            raise NotImplementedError()
+        if return_blobs:
+            raise NotImplementedError
+        if relationship_type is not None:
+            assert relationship_first is not None or relationship_second is not None
+        assert not (relationship_first is not None and relationship_second is not None)
         singular_query = False
         if uuid is not None or name is not None:
             singular_query = True
@@ -199,6 +206,20 @@ class SQLAdapter(DBAdapter):
             filters.append(Object.type_ == type_)
 
         def query(sess):
+            if relationship_first is not None or relationship_second is not None:
+                rels = self.get_relationships(first=relationship_first,
+                                              second=relationship_second,
+                                              type_=relationship_type,
+                                              include_hidden=include_hidden,
+                                              filter_namespace=False,
+                                              convert_to_public_class=False,
+                                              assert_exists=False,
+                                              session=sess)
+                if relationship_first is not None:
+                    rel_other_uuids = list(set([x.second for x in rels]))
+                else:
+                    rel_other_uuids = list(set([x.first for x in rels]))
+                filters.append(Object.uuid.in_(rel_other_uuids))
             return sess.query(Object).options(options).filter(*filters).all()
         res = self.run_query_with_optional_session(query, session=session)
 
@@ -215,11 +236,11 @@ class SQLAdapter(DBAdapter):
         else:
             return res
     
-    def delete_object(self,
-                      uuids,
-                      hide_only,
-                      check_namespace,
-                      namespace_to_check):
+    def delete_objects(self,
+                       uuids,
+                       hide_only,
+                       check_namespace,
+                       namespace_to_check):
         if not hide_only:
             raise NotImplementedError
         with self.session_scope() as session:
@@ -239,13 +260,18 @@ class SQLAdapter(DBAdapter):
                                    check_namespace,
                                    namespace,
                                    session):
-        uuid_obj = self.get_object(uuid=uuid_or_name, session=session)
+        uuid_obj = self.get_object(uuid=uuid_or_name,
+                                   filter_namespace=check_namespace,
+                                   namespace=namespace,
+                                   session=session,
+                                   assert_exists=False)
         if uuid_obj is None:
-            name_obj = self.get_object(name=uuid_or_name, namespace=namespace, session=session)
-            return name_obj
+            return self.get_object(name=uuid_or_name,
+                                   filter_namespace=check_namespace,
+                                   namespace=namespace,
+                                   session=session,
+                                   assert_exists=False)
         else:
-            if check_namespace:
-                assert uuid_obj.namespace == namespace
             return uuid_obj
 
     def insert_blob(self,
@@ -277,7 +303,10 @@ class SQLAdapter(DBAdapter):
                             json_data=json_data)
             session.add(new_blob)
         if return_result:
-            return self.get_blobs(uuid=new_uuid, assert_exists=True)
+            return self.get_blobs(uuid=new_uuid,
+                                  assert_exists=True,
+                                  check_namespace=False,
+                                  convert_to_public_class=True)
     
     def get_blobs(self,
                   object_identifier=None,
@@ -334,11 +363,11 @@ class SQLAdapter(DBAdapter):
                 if check_namespace:
                     objs_uuids = list(set([x.parent for x in cur_res]))
                     tmp_objs = self.get_object(uuids=objs_uuids,
-                                               include_hidden=False,
+                                               include_hidden=include_hidden,
                                                filter_namespace=True,
                                                namespace=namespace_to_check,
                                                session=sess)
-                    assert len(objs_uuids) == tmp_objs
+                    assert len(objs_uuids) == len(tmp_objs)
                 return cur_res
             res = self.run_query_with_optional_session(query, session=session)
             if convert_to_public_class:
@@ -378,24 +407,152 @@ class SQLAdapter(DBAdapter):
                             first,
                             second,
                             type_,
-                            resturn_result,
+                            return_result,
                             check_namespace,
                             namespace_to_check):
-        raise NotImplementedError
+        new_uuid = utils.gen_uuid_string()
+        with self.session_scope() as session:
+            first = self.get_object_from_identifier(first,
+                                                    check_namespace,
+                                                    namespace_to_check,
+                                                    session)
+            assert first is not None
+            second = self.get_object_from_identifier(second,
+                                                     check_namespace,
+                                                     namespace_to_check,
+                                                     session)
+            assert second is not None
+            new_rel = Relationship(uuid=new_uuid,
+                                   first=first.uuid,
+                                   second=second.uuid,
+                                   type_=type_,
+                                   hidden=False)
+            session.add(new_rel)
+        if return_result:
+            return self.get_relationships(uuid=new_uuid,
+                                          assert_exists=True,
+                                          filter_namespace=False)
 
     def get_relationships(self,
                           *,
                           uuid=None,
+                          uuids=None,
                           first=None,
                           second=None,
                           type_=None,
+                          namespace=None,
+                          filter_namespace=False,
                           include_hidden=False,
-                          assert_exists=False):
-        raise NotImplementedError
+                          assert_exists=False,
+                          convert_to_public_class=True,
+                          session=None):
+        # TODO: make the namespace filtering faster with a real JOIN?
+        if uuid is None and uuids is None:
+            options = []
+            filters = []
+            if not include_hidden:
+                filters.append(Relationship.hidden == False)
+            if type_ is not None:
+                if isinstance(type_, list):
+                    filters.append(Relationship.type_.in_(type_))
+                else:
+                    assert isinstance(type_, str)
+                    filters.append(Relationship.type_ == type_)
+            def query(sess):
+                if first is not None:
+                    first_obj = self.get_object_from_identifier(first,
+                                                                filter_namespace,
+                                                                namespace,
+                                                                sess)
+                    assert first is not None
+                    filters.append(Relationship.first == first_obj.uuid)
+                if second is not None:
+                    second_obj = self.get_object_from_identifier(second,
+                                                                filter_namespace,
+                                                                namespace,
+                                                                sess)
+                    assert second is not None
+                    filters.append(Relationship.second == second_obj.uuid)
+                cur_res = sess.query(Relationship).options(options).filter(*filters).all()
+                if first is None and second is None and filter_namespace:
+                    objs_uuids = list(set([x.first for x in cur_res]))
+                    tmp_objs = self.get_object(uuids=objs_uuids,
+                                               include_hidden=include_hidden,
+                                               filter_namespace=True,
+                                               namespace=namespace,
+                                               session=sess)
+                    namespace_by_first_uuid = {x.uuid: x.namespace for x in tmp_objs}
+                    cur_res = [x for x in cur_res if namespace_by_first_uuid[x.first] == namespace]
+                return cur_res
+            res = self.run_query_with_optional_session(query, session=session)
+            if convert_to_public_class:
+                res = [x.to_public() for x in res]
+            if first is not None and second is not None and type_ is not None:
+                if assert_exists:
+                    assert len(res) == 1
+                if len(res) == 1:
+                    return res[0]
+                else:
+                    return None
+            else:
+                if assert_exists:
+                    assert len(res) >= 1
+                return res
+        else:
+            assert uuid is None or uuids is None
+            assert first is None and second is None
+            assert type_ is None
+            options = []
+            if uuid is not None:
+                filters = [Relationship.uuid == uuid]
+            else:
+                filters = [Relationship.uuid.in_(uuids)]
+            if not include_hidden:
+                filters.append(Relationship.hidden == False)
+            def query(sess):
+                cur_res = sess.query(Relationship).options(options).filter(*filters).all()
+                if filter_namespace:
+                    objs_uuids = list(set([x.first for x in cur_res]))
+                    tmp_objs = self.get_object(uuids=objs_uuids,
+                                               include_hidden=include_hidden,
+                                               filter_namespace=True,
+                                               namespace=namespace,
+                                               session=sess)
+                    namespace_by_first_uuid = {x.uuid: x.namespace for x in tmp_objs}
+                    cur_res2 = [x for x in cur_res if namespace_by_first_uuid[x.first] == namespace]
+                else:
+                    cur_res2 = cur_res
+                return cur_res2
+            res = self.run_query_with_optional_session(query, session=session)
+            if convert_to_public_class:
+                res = [x.to_public() for x in res]
+            if uuid is None:
+                if assert_exists:
+                    assert len(res) >= 1
+                return res
+            else:
+                if assert_exists:
+                    assert len(res) == 1
+                if len(res) == 1:
+                    return res[0]
+                else:
+                    return None
 
     def delete_relationships(self,
                              uuids,
                              hide_only,
                              check_namespace,
                              namespace_to_check):
-        raise NotImplementedError
+        if not hide_only:
+            raise NotImplementedError
+        with self.session_scope() as session:
+            rels = self.get_relationships(
+                    uuids=uuids,
+                    include_hidden=False,
+                    filter_namespace=check_namespace,
+                    namespace=namespace_to_check,
+                    convert_to_public_class=False,
+                    session=session)
+            assert len(rels) == len(uuids)
+            for rel in rels:
+                rel.hidden = True

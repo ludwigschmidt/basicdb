@@ -88,7 +88,7 @@ class BasicDB:
                binary_data=None,
                blob=None,
                blobs=None,
-               return_result=False):
+               return_result=True):
         if blob is not None:
             assert blobs is None
         if blobs is not None:
@@ -102,12 +102,12 @@ class BasicDB:
             assert self.namespace is None or namespace == self.namespace
         if not also_insert_blobs:
             return self.db_adapter.insert_object(namespace=namespace,
-                                                name=name,
-                                                type_=type_,
-                                                username=username,
-                                                json_data=json_data,
-                                                binary_data=binary_data,
-                                                return_result=return_result)
+                                                 name=name,
+                                                 type_=type_,
+                                                 username=username,
+                                                 json_data=json_data,
+                                                 binary_data=binary_data,
+                                                 return_result=return_result)
         else:
             new_obj = self.db_adapter.insert_object(namespace=namespace,
                                                     name=name,
@@ -119,7 +119,9 @@ class BasicDB:
             if blobs is None:
                 blobs = {None: blob}
             for blob_name, blob_data in blobs.items():
-                self.insert_blob(new_obj.uuid, name=blob_name, data=blob_data)
+                self.insert_blob(new_obj.uuid,
+                                 name=blob_name,
+                                 data=blob_data)
             if return_result:
                 return new_obj
 
@@ -134,8 +136,9 @@ class BasicDB:
             type_=None,
             include_hidden=False,
             return_blobs=False,
-            first_object=None,
-            second_object=None,
+            rel_first=None,
+            rel_second=None,
+            rel_type=None,
             assert_exists=False):
         if namespace is None:
             namespace = self.namespace
@@ -159,8 +162,9 @@ class BasicDB:
                                           type_=type_,
                                           include_hidden=include_hidden,
                                           return_blobs=return_blobs,
-                                          first_object=first_object,
-                                          second_object=second_object,
+                                          relationship_first=uuid_if_object(rel_first),
+                                          relationship_second=uuid_if_object(rel_second),
+                                          relationship_type=rel_type,
                                           assert_exists=assert_exists)
     
     def update(self,
@@ -180,10 +184,10 @@ class BasicDB:
                 uuid_list.append(uuid_if_object(x))
         else:
             uuid_list.append(uuid_if_object(to_delete))
-        return self.db_adapter.delete_object(uuids=uuid_list,
-                                             hide_only=hide_only,
-                                             check_namespace=self.namespace is not None,
-                                             namespace_to_check=self.namespace)
+        return self.db_adapter.delete_objects(uuids=uuid_list,
+                                              hide_only=hide_only,
+                                              check_namespace=self.namespace is not None,
+                                              namespace_to_check=self.namespace)
     
     def exists(self, uuid_or_object):
         return self.get(uuid=uuid_if_object(uuid_or_object),
@@ -392,10 +396,10 @@ class BasicDB:
                             first,
                             second,
                             type_=None,
-                            return_result=False):
+                            return_result=True):
             assert first is not None and second is not None
-            return self.db_adapter.insert_relationship(first=first,
-                                                       second=second,
+            return self.db_adapter.insert_relationship(first=uuid_if_object(first),
+                                                       second=uuid_if_object(second),
                                                        type_=type_,
                                                        return_result=return_result,
                                                        check_namespace=self.namespace is not None,
@@ -405,12 +409,18 @@ class BasicDB:
                          first=None,
                          second=None,
                          type_=None,
+                         uuid=None,
+                         uuids=None,
                          include_hidden=False):
         if isinstance(type_, str):
             type_ = [type_]
-        return self.db_adapter.get_relationships(first=first,
-                                                 second=second,
+        return self.db_adapter.get_relationships(first=uuid_if_object(first),
+                                                 second=uuid_if_object(second),
                                                  type_=type_,
+                                                 uuid=uuid,
+                                                 uuids=uuids,
+                                                 filter_namespace=self.namespace is not None,
+                                                 namespace=self.namespace,
                                                  include_hidden=include_hidden)
     
     def delete_relationship(self,
