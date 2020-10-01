@@ -67,6 +67,17 @@ class DBAdapter(ABC):
         pass
 
     @abstractmethod
+    def update_blob(self,
+                    *,
+                    object_identifier,
+                    name,
+                    uuid,
+                    update_kwargs,
+                    check_namespace,
+                    namespace_to_check):
+        pass
+
+    @abstractmethod
     def delete_blobs(self,
                      uuids,
                      hide_only,
@@ -87,7 +98,7 @@ class DBAdapter(ABC):
 
     @abstractmethod
     def get_relationships(self,
-                          *
+                          *,
                           uuid,
                           uuids,
                           first,
@@ -97,6 +108,18 @@ class DBAdapter(ABC):
                           filter_namespace,
                           include_hidden,
                           assert_exists):
+        pass
+
+    @abstractmethod
+    def update_relationship(self,
+                            *,
+                            first,
+                            second,
+                            type_,
+                            uuid,
+                            new_type,
+                            check_namespace,
+                            namespace_to_check):
         pass
     
     @abstractmethod

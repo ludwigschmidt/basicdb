@@ -99,6 +99,19 @@ def simple_blob_test(db):
     assert set(blobs.keys()) == set(blob_data.keys())
     for k, v in blob_data.items():
         assert db.load_blob('test2', k) == v
+    
+    db.update_blob('test2', 'a', data=1)
+    db.update_blob('test2', 'c', new_name='d', data=200)
+    blob_data['a'] = 1
+    del blob_data['c']
+    blob_data['d'] = 200
+    assert len(blob_data) == 2
+    assert blob_data['a'] == 1
+    assert blob_data['d'] == 200
+    blobs = db.get_blobs('test2')
+    assert set(blobs.keys()) == set(blob_data.keys())
+    for k, v in blob_data.items():
+        assert db.load_blob('test2', k) == v
 
 
 def simple_relationship_test(db):
@@ -127,6 +140,20 @@ def simple_relationship_test(db):
     assert set([x.first for x in tmp]) == set([test1.uuid, test3.uuid])
     assert set([x.second for x in tmp]) == set([test2.uuid])
     assert set([x.type_ for x in tmp]) == set(['child', 'child2'])
+    
+    tmp = db.get_relationship(second='test2', type_='child')
+    assert len(tmp) == 1
+    assert set([x.first for x in tmp]) == set([test1.uuid])
+    assert set([x.second for x in tmp]) == set([test2.uuid])
+    assert set([x.type_ for x in tmp]) == set(['child'])
+
+    db.update_relationship(first=test3, second=test2, type_='child2', new_type='child')
+    tmp = db.get_relationship(second='test2', type_='child')
+    assert len(tmp) == 2
+    assert set([x.first for x in tmp]) == set([test1.uuid, test3.uuid])
+    assert set([x.second for x in tmp]) == set([test2.uuid])
+    assert set([x.type_ for x in tmp]) == set(['child'])
+    db.update_relationship(db.get_relationship(first=test3, second=test2, type_='child'), new_type='child2')
     
     tmp = db.get_relationship(second='test1')
     assert len(tmp) == 0

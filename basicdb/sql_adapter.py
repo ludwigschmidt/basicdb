@@ -63,7 +63,7 @@ class Object(sqlalchemy_base):
     sqla.UniqueConstraint('namespace', 'name')
 
     def __repr__(self):
-        return f'<Object(uuid="{self.uuid}", namespace="{self.namespace}", name="{self.name}")>'
+        return f'<Object(uuid="{self.uuid.hex}", namespace="{self.namespace}", name="{self.name}")>'
     
     def to_public(self):
         return entities.Object(uuid=self.uuid,
@@ -94,7 +94,7 @@ class Blob(sqlalchemy_base):
     sqla.UniqueConstraint('parent', 'name')
 
     def __repr__(self):
-        return f'<Blob(uuid="{self.uuid}", parent="{self.parent}", name="{self.name}")>'
+        return f'<Blob(uuid="{self.uuid.hex}", parent="{self.parent}", name="{self.name}")>'
     
     def to_public(self):
         return entities.Blob(uuid=self.uuid,
@@ -121,7 +121,7 @@ class Relationship(sqlalchemy_base):
     sqla.UniqueConstraint('first', 'second', 'type_')
 
     def __repr__(self):
-        return f'<Relationship(uuid="{self.uuid}", first="{self.first}", second="{self.second}")>'
+        return f'<Relationship(uuid="{self.uuid.hex}", first="{self.first.hex}", second="{self.second.hex}")>'
     
     def to_public(self):
         return entities.Relationship(uuid=self.uuid,
@@ -150,7 +150,7 @@ class SQLAdapter(DBAdapter):
                                          pool_pre_ping=pool_pre_ping)
         sqlalchemy_base.metadata.create_all(self.engine)
         self.sessionmaker = sqla.orm.sessionmaker(bind=self.engine,
-                                                  expire_on_commit=False)
+                                                  expire_on_commit=True)
     
     @contextlib.contextmanager
     def session_scope(self):
@@ -255,13 +255,14 @@ class SQLAdapter(DBAdapter):
                 else:
                     rel_other_uuids = list(set([x.first for x in rels]))
                 filters.append(Object.uuid.in_(rel_other_uuids))
-            return sess.query(Object).options(options).filter(*filters).all()
+            inner_res = sess.query(Object).options(options).filter(*filters).all()
+            if convert_to_public_class:
+                inner_res = [x.to_public() for x in inner_res]
+            return inner_res
         res = self.run_query_with_optional_session(query, session=session)
 
         if assert_exists:
             assert len(res) >= 1
-        if convert_to_public_class:
-            res = [x.to_public() for x in res] 
         if singular_query:
             assert len(res) <= 1
             if len(res) == 1:
@@ -368,10 +369,11 @@ class SQLAdapter(DBAdapter):
                     filters.append(Blob.hidden == False)
                 if match_name:
                     filters.append(Blob.name == name)
-                return sess.query(Blob).options(options).filter(*filters).all()
+                inner_res = sess.query(Blob).options(options).filter(*filters).all()
+                if convert_to_public_class:
+                    inner_res = [x.to_public() for x in inner_res] 
+                return inner_res
             res = self.run_query_with_optional_session(query, session=session)
-            if convert_to_public_class:
-                res = [x.to_public() for x in res] 
             if match_name:
                 assert len(res) <= 1
                 if assert_exists:
@@ -402,10 +404,10 @@ class SQLAdapter(DBAdapter):
                                                namespace=namespace_to_check,
                                                session=sess)
                     assert len(objs_uuids) == len(tmp_objs)
+                if convert_to_public_class:
+                    cur_res = [x.to_public() for x in cur_res]
                 return cur_res
             res = self.run_query_with_optional_session(query, session=session)
-            if convert_to_public_class:
-                res = [x.to_public() for x in res] 
             if uuid is not None:
                 if assert_exists:
                     assert len(res) == 1
@@ -417,6 +419,45 @@ class SQLAdapter(DBAdapter):
                 if assert_exists:
                     assert len(res) >= 1
                 return res
+    
+    def update_blob(self,
+                    object_identifier,
+                    name,
+                    uuid,
+                    update_kwargs,
+                    check_namespace,
+                    namespace_to_check,
+                    session=None):
+        def query(sess):
+            cur_blob = self.get_blobs(object_identifier=object_identifier,
+                                      name=name,
+                                      match_name=True,
+                                      uuid=uuid,
+                                      include_hidden=True,
+                                      check_namespace=check_namespace,
+                                      namespace_to_check=namespace_to_check,
+                                      assert_exists=True,
+                                      convert_to_public_class=False,
+                                      session=sess)
+            for keyword, new_value in update_kwargs.items():
+                if keyword == 'new_name':
+                    cur_blob.name = new_value
+                elif keyword == 'hidden':
+                    cur_blob.hidden = new_value
+                elif keyword == 'serialization':
+                    cur_blob.serialization = new_value
+                elif keyword == 'size':
+                    cur_blob.size = new_value
+                elif keyword == 'username':
+                    cur_blob.username = new_value
+                elif keyword == 'json_data':
+                    cur_blob.json_data = new_value
+                elif keyword == 'type_':
+                    cur_blob.type_ = new_value
+                else:
+                    raise ValueError
+            return cur_blob.uuid
+        return self.run_query_with_optional_session(query, session=session)
 
     def delete_blobs(self,
                      uuids,
@@ -502,9 +543,9 @@ class SQLAdapter(DBAdapter):
                     filters.append(Relationship.first == first_obj.uuid)
                 if second is not None:
                     second_obj = self.get_object_from_identifier(second,
-                                                                filter_namespace,
-                                                                namespace,
-                                                                sess)
+                                                                 filter_namespace,
+                                                                 namespace,
+                                                                 sess)
                     assert second is not None
                     filters.append(Relationship.second == second_obj.uuid)
                 cur_res = sess.query(Relationship).options(options).filter(*filters).all()
@@ -517,10 +558,10 @@ class SQLAdapter(DBAdapter):
                                                session=sess)
                     namespace_by_first_uuid = {x.uuid: x.namespace for x in tmp_objs}
                     cur_res = [x for x in cur_res if namespace_by_first_uuid[x.first] == namespace]
+                if convert_to_public_class:
+                    cur_res = [x.to_public() for x in cur_res]
                 return cur_res
             res = self.run_query_with_optional_session(query, session=session)
-            if convert_to_public_class:
-                res = [x.to_public() for x in res]
             if first is not None and second is not None and type_ is not None:
                 if assert_exists:
                     assert len(res) == 1
@@ -556,10 +597,10 @@ class SQLAdapter(DBAdapter):
                     cur_res2 = [x for x in cur_res if namespace_by_first_uuid[x.first] == namespace]
                 else:
                     cur_res2 = cur_res
+                if convert_to_public_class:
+                    cur_res2 = [x.to_public() for x in cur_res2]
                 return cur_res2
             res = self.run_query_with_optional_session(query, session=session)
-            if convert_to_public_class:
-                res = [x.to_public() for x in res]
             if uuid is None:
                 if assert_exists:
                     assert len(res) >= 1
@@ -571,6 +612,31 @@ class SQLAdapter(DBAdapter):
                     return res[0]
                 else:
                     return None
+    
+    def update_relationship(self,
+                            first,
+                            second,
+                            type_,
+                            uuid,
+                            new_type,
+                            check_namespace,
+                            namespace_to_check,
+                            session=None):
+        def query(sess):
+            rel = self.get_relationships(first=first,
+                                         second=second,
+                                         type_=type_,
+                                         uuid=uuid,
+                                         filter_namespace=check_namespace,
+                                         namespace=namespace_to_check,
+                                         assert_exists=True,
+                                         convert_to_public_class=False,
+                                         session=sess)
+            if isinstance(rel, list):
+                assert len(rel) == 1
+                rel = rel[0]
+            rel.type_ = new_type
+        self.run_query_with_optional_session(query, session=session)
 
     def delete_relationships(self,
                              uuids,

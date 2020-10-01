@@ -164,15 +164,10 @@ class BasicDB:
                                           relationship_type=rel_type,
                                           assert_exists=assert_exists)
     
-    def update(self,
-               uuid_or_object,
-               namespace=None,
-               type_=None,
-               hidden=None,
-               username=None,
-               json_data=None,
-               binary_data=None):
+    def update(self, object_identifier, **kwargs):
         raise NotImplementedError
+        for keyword in kwargs:
+            assert keyword in ['name', 'type_', 'namespace', 'hidden', 'username', 'json_data', 'json_diff']
 
     def delete(self, to_delete, hide_only=True):
         uuid_list = []
@@ -363,15 +358,42 @@ class BasicDB:
                 return res
     
     def update_blob(self,
-                    obj_identifier=None,
+                    object_or_blob_identifier=None,
                     name=None,
                     uuid=None,
-                    type_=None,
-                    json_data=None,
-                    username=None,
-                    hidden=None,
-                    data=None):
-        raise NotImplementedError
+                    **kwargs):
+        for keyword in kwargs:
+            assert keyword in ['new_name', 'type_', 'json_data', 'username', 'hidden', 'data']
+        if isinstance(object_or_blob_identifier, Blob):
+            uuid = object_or_blob_identifier.uuid
+            object_identifier = None
+            assert name is None
+        else:
+            object_identifier = object_or_blob_identifier
+        if uuid is None:
+            assert object_identifier is not None
+        else:
+            assert object_identifier is None
+            assert name is None
+        update_data = False
+        if 'data' in kwargs:
+            update_data = True
+            new_data = kwargs['data']
+            del kwargs['data']
+            if not isinstance(new_data, bytes):
+                new_data = self.serialize(new_data)
+                kwargs['serialization'] = self.serialization
+            else:
+                kwargs['serialization'] = None
+            kwargs['size'] = len(new_data)
+        cur_uuid = self.db_adapter.update_blob(object_identifier=uuid_if_object(object_identifier),
+                                               name=name,
+                                               uuid=uuid,
+                                               update_kwargs=kwargs,
+                                               check_namespace=self.namespace is not None,
+                                               namespace_to_check=self.namespace)
+        if update_data:
+            self.stash.put(self.get_blob_key(cur_uuid), new_data)
     
     def delete_blob(self,
                     to_delete,
@@ -419,6 +441,26 @@ class BasicDB:
                                                  filter_namespace=self.namespace is not None,
                                                  namespace=self.namespace,
                                                  include_hidden=include_hidden)
+    
+    def update_relationship(self,
+                            first=None,
+                            second=None,
+                            type_=None,
+                            uuid=None,
+                            new_type=None):
+        if isinstance(first, Relationship):
+            assert second is None
+            assert type_ is None
+            assert uuid is None
+            uuid = first.uuid
+            first = None
+        return self.db_adapter.update_relationship(first=uuid_if_object(first),
+                                                   second=uuid_if_object(second),
+                                                   type_=type_,
+                                                   uuid=uuid,
+                                                   new_type=new_type,
+                                                   check_namespace=self.namespace is not None,
+                                                   namespace_to_check=self.namespace)
     
     def delete_relationship(self,
                             to_delete,
