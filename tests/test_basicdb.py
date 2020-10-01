@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from basicdb import __version__, BasicDB
 
@@ -12,6 +13,7 @@ def simple_test(db):
               json_data={'foo': 'bar'})
     res = db.get(name='test1')
     assert res.name == 'test1'
+    assert isinstance(res.uuid, uuid.UUID)
     assert res.json_data['foo'] == 'bar'
     assert res['foo'] == 'bar'
     assert res.namespace == db.namespace

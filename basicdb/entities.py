@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 import datetime
+import uuid
 
 
 @dataclass
 class Object:
-    uuid: str
+    uuid: uuid.UUID
     namespace: str
     name: str
     type_: str
@@ -20,8 +21,8 @@ class Object:
 
 @dataclass
 class Blob:
-    uuid: str
-    parent: str
+    uuid: uuid.UUID
+    parent: uuid.UUID
     name: str
     type_: str
     size: int
@@ -34,8 +35,8 @@ class Blob:
 
 @dataclass
 class Relationship:
-    uuid: str
-    first: str
-    second: str
+    uuid: uuid.UUID
+    first: uuid.UUID
+    second: uuid.UUID
     type_: str
     hidden: bool

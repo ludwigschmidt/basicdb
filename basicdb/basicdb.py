@@ -13,21 +13,18 @@ from .sql_adapter import SQLAdapter
 def uuid_if_object(x):
     if isinstance(x, Object):
         return x.uuid
-    assert isinstance(x, str) or x is None
     return x
 
 
 def uuid_if_blob(x):
     if isinstance(x, Blob):
         return x.uuid
-    assert isinstance(x, str) or x is None
     return x
 
 
 def uuid_if_relationship(x):
     if isinstance(x, Relationship):
         return x.uuid
-    assert isinstance(x, str) or x is None
     return x
 
 
@@ -77,7 +74,7 @@ class BasicDB:
             return pickle.loads(bytes)
     
     def get_blob_key(self, blob_uuid):
-        return str(self.stash_blob_prefix / blob_uuid)
+        return str(self.stash_blob_prefix / blob_uuid.hex)
     
     def insert(self,
                namespace=None,

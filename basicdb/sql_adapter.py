@@ -1,5 +1,6 @@
 import contextlib
 import datetime
+import uuid
 
 import sqlalchemy as sqla
 import sqlalchemy_utils
@@ -12,10 +13,44 @@ from . import utils
 
 sqlalchemy_base = sqla.ext.declarative.declarative_base()
 
+# From https://gist.github.com/gmolveau/7caeeefe637679005a7bb9ae1b5e421e
+class GenericUUID(sqla.types.TypeDecorator):
+    """Platform-independent UUID type.
+    Uses PostgreSQL's UUID type, otherwise uses
+    CHAR(32), storing as stringified hex values.
+    """
+    impl = sqla.types.CHAR
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(sqla.dialects.postgresql.UUID())
+        else:
+            return dialect.type_descriptor(sqla.types.CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return "%.32x" % uuid.UUID(value).int
+            else:
+                # hexstring
+                return "%.32x" % value.int
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value)
+            return value
+
 
 class Object(sqlalchemy_base):
     __tablename__ = 'objects'
-    uuid = sqla.Column(sqla.String, primary_key=True)
+    uuid = sqla.Column(GenericUUID, primary_key=True)
     namespace = sqla.Column(sqla.String)
     name = sqla.Column(sqla.String)
     type_ = sqla.Column(sqla.String)
@@ -44,9 +79,9 @@ class Object(sqlalchemy_base):
 
 class Blob(sqlalchemy_base):
     __tablename__ = 'blobs'
-    uuid = sqla.Column(sqla.String, primary_key=True)
+    uuid = sqla.Column(GenericUUID, primary_key=True)
     # TODO: add foreign key constraint
-    parent = sqla.Column(sqla.String)
+    parent = sqla.Column(GenericUUID)
     name = sqla.Column(sqla.String)
     type_ = sqla.Column(sqla.String)
     size = sqla.Column(sqla.Integer)
@@ -76,10 +111,10 @@ class Blob(sqlalchemy_base):
 
 class Relationship(sqlalchemy_base):
     __tablename__ = 'relationships'
-    uuid = sqla.Column(sqla.String, primary_key=True)
+    uuid = sqla.Column(GenericUUID, primary_key=True)
     # TODO: add foreign key constraint
-    first = sqla.Column(sqla.String)
-    second = sqla.Column(sqla.String)
+    first = sqla.Column(GenericUUID)
+    second = sqla.Column(GenericUUID)
     type_ = sqla.Column(sqla.String)
     hidden = sqla.Column(sqla.Boolean)
 
@@ -144,7 +179,7 @@ class SQLAdapter(DBAdapter):
                       json_data=None,
                       binary_data=None,
                       return_result=False):
-        new_uuid = utils.gen_uuid_string()
+        new_uuid = uuid.uuid4()
         if name is None:
             name = new_uuid
         with self.session_scope() as session:
@@ -260,19 +295,18 @@ class SQLAdapter(DBAdapter):
                                    check_namespace,
                                    namespace,
                                    session):
-        uuid_obj = self.get_object(uuid=uuid_or_name,
-                                   filter_namespace=check_namespace,
-                                   namespace=namespace,
-                                   session=session,
-                                   assert_exists=False)
-        if uuid_obj is None:
-            return self.get_object(name=uuid_or_name,
+        if isinstance(uuid_or_name, uuid.UUID):
+            return self.get_object(uuid=uuid_or_name,
                                    filter_namespace=check_namespace,
                                    namespace=namespace,
                                    session=session,
                                    assert_exists=False)
         else:
-            return uuid_obj
+            return self.get_object(name=uuid_or_name,
+                                   filter_namespace=check_namespace,
+                                   namespace=namespace,
+                                   session=session,
+                                   assert_exists=False)
 
     def insert_blob(self,
                     object_identifier,
@@ -285,7 +319,7 @@ class SQLAdapter(DBAdapter):
                     return_result,
                     check_namespace,
                     namespace_to_check):
-        new_uuid = utils.gen_uuid_string()
+        new_uuid = uuid.uuid4()
         with self.session_scope() as session:
             obj = self.get_object_from_identifier(object_identifier,
                                                   check_namespace,
@@ -410,7 +444,7 @@ class SQLAdapter(DBAdapter):
                             return_result,
                             check_namespace,
                             namespace_to_check):
-        new_uuid = utils.gen_uuid_string()
+        new_uuid = uuid.uuid4()
         with self.session_scope() as session:
             first = self.get_object_from_identifier(first,
                                                     check_namespace,

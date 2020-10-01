@@ -1,8 +1,8 @@
 import uuid
 
 
-def gen_uuid_string():
-    num = uuid.uuid4().int
+def gen_short_uuid_string(cur_uuid):
+    num = cur_uuid.int
     alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
     res = []
     while num > 0:
