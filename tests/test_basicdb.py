@@ -65,6 +65,10 @@ def simple_test(db):
     assert res[2] == 3
     assert len(res.extra) == 1
 
+    res[2] = 4
+    db.update(res)
+    assert db.get(name='test2')[2] == 4
+
 
 def simple_blob_test(db):
     blob_data = [2, 3, 5, 7, 11]

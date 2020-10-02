@@ -17,9 +17,13 @@ class Object:
 
     def __getitem__(self, key):
         return self.extra[key]
+    
+    def __setitem__(self, key, value):
+        self.extra[key] = value
 
     def __getattr__(self, key):
         return self.extra[key]
+    #TODO: figure out setattr
 
 
 @dataclass
@@ -39,8 +43,12 @@ class Blob:
     def __getitem__(self, key):
         return self.extra[key]
     
+    def __setitem__(self, key, value):
+        self.extra[key] = value
+    
     def __getattr__(self, key):
         return self.extra[key]
+    #TODO: figure out setattr
 
 
 @dataclass
