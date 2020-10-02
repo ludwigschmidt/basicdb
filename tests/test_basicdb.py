@@ -1,6 +1,8 @@
 import datetime
 import uuid
 
+import pytest
+
 from basicdb import __version__, BasicDB
 
 
@@ -10,16 +12,18 @@ def test_version():
 
 def simple_test(db):
     db.insert(name='test1',
-              json_data={'foo': 'bar'})
+              extra={'foo': 'bar'})
     res = db.get(name='test1')
     assert res.name == 'test1'
     assert isinstance(res.uuid, uuid.UUID)
-    assert res.json_data['foo'] == 'bar'
+    assert res.extra['foo'] == 'bar'
     assert res['foo'] == 'bar'
+    assert res.foo == 'bar'
+    with pytest.raises(KeyError):
+        assert res.foo2 == 'bar'
     assert res.namespace == db.namespace
     assert res.type_ is None
     assert not res.hidden
-    assert res.binary_data is None
     assert res.username is not None
     assert (res.creation_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds() <= 1
     res = db.get()
@@ -27,12 +31,11 @@ def simple_test(db):
     assert res[0].name == 'test1'
     
     db.insert(name='test2',
-              json_data={'key': 5},
-              binary_data=b'0123',
+              extra={'key': 5},
               username='testuser')
     res = db.get(name='test1')
     assert res.name == 'test1'
-    assert res.json_data['foo'] == 'bar'
+    assert res.extra['foo'] == 'bar'
     res = db.get()
     assert len(res) == 2
     assert set([x.name for x in res]) == set(['test1', 'test2'])
@@ -41,7 +44,6 @@ def simple_test(db):
     res = res[0]
     assert res.name == 'test2'
     assert res['key'] == 5
-    assert res.binary_data == b'0123'
     assert res.username == 'testuser'
 
     db.insert(name='test3') 
@@ -55,8 +57,13 @@ def simple_test(db):
     res = res[0]
     assert res.name == 'test2'
     assert res['key'] == 5
-    assert res.binary_data == b'0123'
     assert res.username == 'testuser'
+
+    db.update('test2', extra={2:3}, username='someone_else', hidden=False)
+    res = db.get(name='test2', include_hidden=True)
+    assert res.username == 'someone_else'
+    assert res[2] == 3
+    assert len(res.extra) == 1
 
 
 def simple_blob_test(db):
@@ -72,6 +79,9 @@ def simple_blob_test(db):
     for k, v in blob_data.items():
         db.insert_blob('test2', name=k, data=v)
     blobs = db.get_blobs('test2')
+    for k, v in blobs.items():
+        assert v.name == k
+        assert v.modification_time is None
     assert set(blobs.keys()) == set(blob_data.keys())
     for k, v in blob_data.items():
         assert db.load_blob('test2', k) == v
@@ -112,6 +122,17 @@ def simple_blob_test(db):
     assert set(blobs.keys()) == set(blob_data.keys())
     for k, v in blob_data.items():
         assert db.load_blob('test2', k) == v
+    assert blobs['a'].modification_time is not None
+    assert blobs['d'].modification_time is not None
+    assert (blobs['a'].modification_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds() <= 1
+    assert (blobs['d'].modification_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds() <= 1
+
+    db.insert_blob('test1', 'test1', extra={1: 2}, data=b'0000')
+    blobs = db.get_blobs('test1')
+    assert len(blobs) == 2
+    assert set([x for x in blobs.keys()]) == set([None, 'test1'])
+    assert set([x.name for x in blobs.values()]) == set([None, 'test1'])
+    assert blobs['test1'][1] == 2
 
 
 def simple_relationship_test(db):

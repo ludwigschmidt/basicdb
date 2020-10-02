@@ -8,8 +8,7 @@ class DBAdapter(ABC):
                       name,
                       type_,
                       username,
-                      json_data,
-                      binary_data,
+                      extra_data,
                       return_result):
         pass
     
@@ -22,11 +21,16 @@ class DBAdapter(ABC):
                    names,
                    type_,
                    include_hidden,
-                   return_blobs,
                    relationship_first,
                    relationship_second,
                    relationship_type,
                    assert_exists):
+        pass
+    
+    @abstractmethod
+    def update_object(self,
+                      object_identifier,
+                      update_kwargs):
         pass
     
     @abstractmethod
@@ -44,7 +48,7 @@ class DBAdapter(ABC):
                     name,
                     type_,
                     username,
-                    json_data,
+                    extra_data,
                     serialization,
                     size,
                     return_result,

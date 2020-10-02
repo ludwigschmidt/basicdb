@@ -2,6 +2,7 @@ import contextlib
 import datetime
 import uuid
 
+import msgpack
 import sqlalchemy as sqla
 import sqlalchemy_utils
 
@@ -55,10 +56,10 @@ class Object(sqlalchemy_base):
     name = sqla.Column(sqla.String)
     type_ = sqla.Column(sqla.String)
     creation_time = sqla.Column(sqla.DateTime(timezone=False), server_default=sqla.sql.func.now())
+    modification_time = sqla.Column(sqla.DateTime(timezone=False))
     hidden = sqla.Column(sqla.Boolean)
     username = sqla.Column(sqla.String)
-    json_data = sqla.Column(sqla.JSON)
-    binary_data = sqla.Column(sqla.LargeBinary)
+    extra_data = sqla.Column(sqla.LargeBinary)
 
     sqla.UniqueConstraint('namespace', 'name')
 
@@ -71,10 +72,10 @@ class Object(sqlalchemy_base):
                                name=self.name,
                                type_=self.type_,
                                creation_time=self.creation_time.replace(tzinfo=datetime.timezone.utc),
+                               modification_time=self.modification_time.replace(tzinfo=datetime.timezone.utc) if self.modification_time is not None else None,
                                hidden=self.hidden,
                                username=self.username,
-                               json_data=self.json_data,
-                               binary_data=self.binary_data)
+                               extra=msgpack.unpackb(self.extra_data, strict_map_key=False))
 
 
 class Blob(sqlalchemy_base):
@@ -86,10 +87,11 @@ class Blob(sqlalchemy_base):
     type_ = sqla.Column(sqla.String)
     size = sqla.Column(sqla.Integer)
     creation_time = sqla.Column(sqla.DateTime(timezone=False), server_default=sqla.sql.func.now())
+    modification_time = sqla.Column(sqla.DateTime(timezone=False))
     hidden = sqla.Column(sqla.Boolean)
     username = sqla.Column(sqla.String)
     serialization = sqla.Column(sqla.String)
-    json_data = sqla.Column(sqla.JSON)
+    extra_data = sqla.Column(sqla.LargeBinary)
 
     sqla.UniqueConstraint('parent', 'name')
 
@@ -103,10 +105,11 @@ class Blob(sqlalchemy_base):
                              type_=self.type_,
                              size=self.size,
                              creation_time=self.creation_time.replace(tzinfo=datetime.timezone.utc),
+                             modification_time=self.modification_time.replace(tzinfo=datetime.timezone.utc) if self.modification_time is not None else None,
                              hidden=self.hidden,
                              username=self.username,
                              serialization=self.serialization,
-                             json_data=self.json_data)
+                             extra=msgpack.unpackb(self.extra_data, strict_map_key=False))
 
 
 class Relationship(sqlalchemy_base):
@@ -176,8 +179,7 @@ class SQLAdapter(DBAdapter):
                       name=None,
                       type_=None,
                       username=None,
-                      json_data=None,
-                      binary_data=None,
+                      extra_data=None,
                       return_result=False):
         new_uuid = uuid.uuid4()
         if name is None:
@@ -189,8 +191,8 @@ class SQLAdapter(DBAdapter):
                              type_=type_,
                              hidden=False,
                              username=username,
-                             json_data=json_data,
-                             binary_data=binary_data)
+                             modification_time=None,
+                             extra_data=extra_data)
             session.add(new_obj)
         if return_result:
             return self.get_object(uuid=new_uuid,
@@ -206,7 +208,6 @@ class SQLAdapter(DBAdapter):
                    names=None,
                    type_=None,
                    include_hidden=False,
-                   return_blobs=False,
                    relationship_first=None,
                    relationship_second=None,
                    relationship_type=None,
@@ -214,8 +215,6 @@ class SQLAdapter(DBAdapter):
                    filter_namespace=True,
                    convert_to_public_class=True,
                    session=None):
-        if return_blobs:
-            raise NotImplementedError
         if relationship_type is not None:
             assert relationship_first is not None or relationship_second is not None
         assert not (relationship_first is not None and relationship_second is not None)
@@ -272,6 +271,35 @@ class SQLAdapter(DBAdapter):
         else:
             return res
     
+    def update_object(self,
+                      object_identifier,
+                      update_kwargs,
+                      session=None):
+        def query(sess):
+            cur_obj = self.get_object_from_identifier(object_identifier,
+                                                      check_namespace=False,
+                                                      namespace=None,
+                                                      assert_exists=True,
+                                                      include_hidden=True,
+                                                      session=sess)
+            for keyword, new_value in update_kwargs.items():
+                if keyword == 'new_name':
+                    cur_obj.name = new_value
+                elif keyword == 'hidden':
+                    cur_obj.hidden = new_value
+                elif keyword == 'username':
+                    cur_obj.username = new_value
+                elif keyword == 'extra_data':
+                    cur_obj.extra_data = new_value
+                elif keyword == 'type_':
+                    cur_obj.type_ = new_value
+                elif keyword == 'namespace':
+                    cur_obj.namespace_ = new_value
+                else:
+                    raise ValueError
+            cur_obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
+        return self.run_query_with_optional_session(query, session=session)
+    
     def delete_objects(self,
                        uuids,
                        hide_only,
@@ -289,32 +317,40 @@ class SQLAdapter(DBAdapter):
             assert len(objs) == len(uuids)
             for obj in objs:
                 obj.hidden = True
+                obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
    
     # TODO: merge this into get ?
     def get_object_from_identifier(self,
                                    uuid_or_name,
                                    check_namespace,
                                    namespace,
-                                   session):
+                                   session,
+                                   include_hidden=False,
+                                   assert_exists=False,
+                                   convert_to_public_class=False):
         if isinstance(uuid_or_name, uuid.UUID):
             return self.get_object(uuid=uuid_or_name,
                                    filter_namespace=check_namespace,
                                    namespace=namespace,
                                    session=session,
-                                   assert_exists=False)
+                                   include_hidden=True,
+                                   assert_exists=assert_exists,
+                                   convert_to_public_class=convert_to_public_class)
         else:
             return self.get_object(name=uuid_or_name,
                                    filter_namespace=check_namespace,
                                    namespace=namespace,
                                    session=session,
-                                   assert_exists=False)
+                                   include_hidden=True,
+                                   assert_exists=assert_exists,
+                                   convert_to_public_class=convert_to_public_class)
 
     def insert_blob(self,
                     object_identifier,
                     name,
                     type_,
                     username,
-                    json_data,
+                    extra_data,
                     serialization,
                     size,
                     return_result,
@@ -334,8 +370,9 @@ class SQLAdapter(DBAdapter):
                             size=size,
                             hidden=False,
                             username=username,
+                            modification_time=None,
                             serialization=serialization,
-                            json_data=json_data)
+                            extra_data=extra_data)
             session.add(new_blob)
         if return_result:
             return self.get_blobs(uuid=new_uuid,
@@ -450,12 +487,13 @@ class SQLAdapter(DBAdapter):
                     cur_blob.size = new_value
                 elif keyword == 'username':
                     cur_blob.username = new_value
-                elif keyword == 'json_data':
-                    cur_blob.json_data = new_value
+                elif keyword == 'extra_data':
+                    cur_blob.extra_data = new_value
                 elif keyword == 'type_':
                     cur_blob.type_ = new_value
                 else:
                     raise ValueError
+            cur_blob.modification_time = datetime.datetime.now(datetime.timezone.utc)
             return cur_blob.uuid
         return self.run_query_with_optional_session(query, session=session)
 
@@ -476,6 +514,7 @@ class SQLAdapter(DBAdapter):
             assert len(blobs) == len(uuids)
             for blob in blobs:
                 blob.hidden = True
+                blob.modification_time = datetime.datetime.now(datetime.timezone.utc)
 
     def insert_relationship(self,
                             *,

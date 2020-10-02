@@ -1,9 +1,9 @@
-from collections import Iterable
 import getpass
 import pathlib
 import pickle
 import socket
 
+import msgpack
 import objectstash
 
 from .entities import *
@@ -39,7 +39,8 @@ class BasicDB:
                  object_stash=None,
                  username=None,
                  include_fqdn_in_username=True,
-                 stash_blob_prefix=''):
+                 stash_blob_prefix='basicdb_stash',
+                 max_extra_fields_size=1024):
         if username is None:
             if include_fqdn_in_username:
                 self.username = getpass.getuser() + '@' + socket.getfqdn()
@@ -62,6 +63,7 @@ class BasicDB:
                 raise ValueError('No known ObjectStash implementation identified.')
         self.stash_blob_prefix = pathlib.Path(stash_blob_prefix)
         self.serialization = 'pickle'
+        self.max_extra_fields_size = max_extra_fields_size
     
     def serialize(self, data):
         return pickle.dumps(data)
@@ -81,8 +83,7 @@ class BasicDB:
                name=None,
                type_=None,
                username=None,
-               json_data=None,
-               binary_data=None,
+               extra={},
                blob=None,
                blobs=None,
                return_result=True):
@@ -97,21 +98,23 @@ class BasicDB:
             namespace = self.namespace
         else:
             assert self.namespace is None or namespace == self.namespace
+        assert isinstance(extra, dict)
+        extra_data = msgpack.packb(extra)
+        if self.max_extra_fields_size is not None:
+            assert len(extra_data) <= self.max_extra_fields_size
         if not also_insert_blobs:
             return self.db_adapter.insert_object(namespace=namespace,
                                                  name=name,
                                                  type_=type_,
                                                  username=username,
-                                                 json_data=json_data,
-                                                 binary_data=binary_data,
+                                                 extra_data=extra_data,
                                                  return_result=return_result)
         else:
             new_obj = self.db_adapter.insert_object(namespace=namespace,
                                                     name=name,
                                                     type_=type_,
                                                     username=username,
-                                                    json_data=json_data,
-                                                    binary_data=binary_data,
+                                                    extra_data=extra_data,
                                                     return_result=True)
             if blobs is None:
                 blobs = {None: blob}
@@ -123,6 +126,7 @@ class BasicDB:
                 return new_obj
 
     # Retrieves objects, arguments are filters
+    # TODO: make this accept an object identifier as first argument?
     def get(self,
             object_=None,
             uuid=None,
@@ -132,7 +136,6 @@ class BasicDB:
             names=None,
             type_=None,
             include_hidden=False,
-            return_blobs=False,
             rel_first=None,
             rel_second=None,
             rel_type=None,
@@ -158,16 +161,40 @@ class BasicDB:
                                           names=names,
                                           type_=type_,
                                           include_hidden=include_hidden,
-                                          return_blobs=return_blobs,
                                           relationship_first=uuid_if_object(rel_first),
                                           relationship_second=uuid_if_object(rel_second),
                                           relationship_type=rel_type,
                                           assert_exists=assert_exists)
     
     def update(self, object_identifier, **kwargs):
-        raise NotImplementedError
         for keyword in kwargs:
-            assert keyword in ['name', 'type_', 'namespace', 'hidden', 'username', 'json_data', 'json_diff']
+            assert keyword in ['new_name', 'type_', 'namespace', 'hidden', 'username', 'extra']
+        if isinstance(object_identifier, Object):
+            if 'new_name' not in kwargs:
+                kwargs['new_name'] = object_identifier.name
+            if 'type_' not in kwargs:
+                kwargs['type_'] = object_identifier.type_
+            if 'namespace' not in kwargs:
+                kwargs['namespace'] = object_identifier.namespace
+            if 'hidden' not in kwargs:
+                kwargs['hidden'] = object_identifier.hidden
+            if 'username' not in kwargs:
+                kwargs['username'] = object_identifier.username
+            if 'extra' not in kwargs:
+                kwargs['extra'] = object_identifier.extra
+        if 'namespace' in kwargs:
+            if self.namespace is not None:
+                assert self.namespace == kwargs['namespace']
+        if 'extra' in kwargs:
+            assert isinstance(kwargs['extra'], dict)
+            kwargs['extra_data'] = msgpack.packb(kwargs['extra'])
+            del kwargs['extra']
+            if self.max_extra_fields_size is not None:
+                assert len(kwargs['extra_data']) <= self.max_extra_fields_size
+        self.db_adapter.update_object(object_identifier=uuid_if_object(object_identifier),
+                                      update_kwargs=kwargs)
+
+
 
     def delete(self, to_delete, hide_only=True):
         uuid_list = []
@@ -191,7 +218,7 @@ class BasicDB:
                     name=None,
                     type_=None,
                     username=None,
-                    json_data=None,
+                    extra={},
                     data=None):
         object_identifier = uuid_if_object(object_or_uuid)
         if not isinstance(data, bytes):
@@ -202,12 +229,16 @@ class BasicDB:
         size = len(data)
         if username is None:
             username = self.username
+        assert isinstance(extra, dict)
+        extra_data = msgpack.packb(extra)
+        if self.max_extra_fields_size is not None:
+            assert len(extra_data) <= self.max_extra_fields_size
         new_blob = self.db_adapter.insert_blob(
                 object_identifier=object_identifier,
                 name=name,
                 type_=type_,
                 username=username,
-                json_data=json_data,
+                extra_data=extra_data,
                 serialization=serialization,
                 size=size,
                 return_result=True,
@@ -363,7 +394,7 @@ class BasicDB:
                     uuid=None,
                     **kwargs):
         for keyword in kwargs:
-            assert keyword in ['new_name', 'type_', 'json_data', 'username', 'hidden', 'data']
+            assert keyword in ['new_name', 'type_', 'extra', 'username', 'hidden', 'data']
         if isinstance(object_or_blob_identifier, Blob):
             uuid = object_or_blob_identifier.uuid
             object_identifier = None
@@ -386,6 +417,12 @@ class BasicDB:
             else:
                 kwargs['serialization'] = None
             kwargs['size'] = len(new_data)
+        if 'extra' in kwargs:
+            assert isinstance(kwargs['extra'], dict)
+            kwargs['extra_data'] = msgpack.packb(kwargs['extra'])
+            del kwargs['extra']
+            if self.max_extra_fields_size is not None:
+                assert len(kwargs['extra_data']) <= self.max_extra_fields_size
         cur_uuid = self.db_adapter.update_blob(object_identifier=uuid_if_object(object_identifier),
                                                name=name,
                                                uuid=uuid,

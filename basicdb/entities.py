@@ -10,13 +10,16 @@ class Object:
     name: str
     type_: str
     creation_time: datetime.datetime
+    modification_time: datetime.datetime
     hidden: bool
     username: str
-    json_data: dict
-    binary_data: bytes
+    extra: dict
 
     def __getitem__(self, key):
-        return self.json_data[key]
+        return self.extra[key]
+
+    def __getattr__(self, key):
+        return self.extra[key]
 
 
 @dataclass
@@ -27,10 +30,17 @@ class Blob:
     type_: str
     size: int
     creation_time: datetime.datetime
+    modification_time: datetime.datetime
     hidden: bool
     username: str
     serialization: str
-    json_data: dict
+    extra: dict
+    
+    def __getitem__(self, key):
+        return self.extra[key]
+    
+    def __getattr__(self, key):
+        return self.extra[key]
 
 
 @dataclass
