@@ -60,7 +60,7 @@ def simple_test(db):
     assert res.username == 'testuser'
 
     db.update('test2', extra={2:3}, username='someone_else', hidden=False)
-    res = db.get(name='test2', include_hidden=True)
+    res = db.get(name='test2')
     assert res.username == 'someone_else'
     assert res[2] == 3
     assert len(res.extra) == 1
@@ -68,6 +68,14 @@ def simple_test(db):
     res[2] = 4
     db.update(res)
     assert db.get(name='test2')[2] == 4
+
+    test2 = db.get(name='test2') 
+    test2.username = 'third_person'
+    test2.not_a_field = 'hello setattr'
+    db.update(test2)
+    res = db.get(name='test2')
+    assert res.username == 'third_person'
+    assert res.not_a_field == 'hello setattr'
 
 
 def simple_blob_test(db):
