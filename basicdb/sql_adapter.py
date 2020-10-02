@@ -333,7 +333,7 @@ class SQLAdapter(DBAdapter):
                                    filter_namespace=check_namespace,
                                    namespace=namespace,
                                    session=session,
-                                   include_hidden=True,
+                                   include_hidden=include_hidden,
                                    assert_exists=assert_exists,
                                    convert_to_public_class=convert_to_public_class)
         else:
@@ -341,7 +341,7 @@ class SQLAdapter(DBAdapter):
                                    filter_namespace=check_namespace,
                                    namespace=namespace,
                                    session=session,
-                                   include_hidden=True,
+                                   include_hidden=include_hidden,
                                    assert_exists=assert_exists,
                                    convert_to_public_class=convert_to_public_class)
 
