@@ -30,7 +30,8 @@ class DBAdapter(ABC):
     @abstractmethod
     def update_object(self,
                       object_identifier,
-                      update_kwargs):
+                      update_kwargs,
+                      namespace):
         pass
     
     @abstractmethod

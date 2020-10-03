@@ -7,7 +7,7 @@ from moto import mock_s3
 import pytest
 
 import basicdb
-from basicdb import __version__, BasicDB, IntegrityError
+from basicdb import __version__, BasicDB, IntegrityError, NamespaceError
 
 
 def test_version():
@@ -18,6 +18,7 @@ def simple_test(db):
     db.insert(name='test1',
               extra={'foo': 'bar'})
     res = db.get(name='test1')
+    test1 = res
     assert res.name == 'test1'
     assert isinstance(res.uuid, uuid.UUID)
     assert res.extra['foo'] == 'bar'
@@ -87,6 +88,24 @@ def simple_test(db):
     with pytest.raises(IntegrityError):
         db.update('test1', new_name='test3')
 
+    if db.namespace is None: 
+        test1_space1 = db.insert(name='test1', namespace='space1')
+        assert db.get(name='test1').uuid == test1.uuid
+        assert db.get(name='test1', namespace='space1').uuid == test1_space1.uuid
+        db.update('test1', namespace='space2')
+        assert db.get(name='test1') is None
+        assert db.get(name='test1', namespace='space2').uuid == test1.uuid
+        with pytest.raises(IntegrityError):
+            db.update(test1, namespace='space1')
+        db.update(test1, namespace=None)
+        assert db.get(name='test1').uuid == test1.uuid
+    else:
+        assert db.get(name='test1', namespace=db.namespace).uuid == test1.uuid
+        with pytest.raises(NamespaceError):
+            test1_space1 = db.insert(name='test1', namespace='space1')
+        with pytest.raises(NamespaceError):
+            db.update('test1', namespace='space1')
+
 
 def simple_blob_test(db):
     blob_data = [2, 3, 5, 7, 11]
@@ -126,6 +145,13 @@ def simple_blob_test(db):
     assert len(obj2_blob_data) == len(blob_data)
     for k, v in blob_data.items():
         assert obj2_blob_data[k] == v
+    
+    if db.namespace is None:
+        db.insert(name='test2', namespace='other_space')
+        assert len(db.get_blobs(db.get(name='test2'))) == 3
+        assert len(db.get_blobs(db.get(name='test2', namespace='other_space'))) == 0
+        for k, v in blob_data.items():
+            assert db.load_blob('test2', k) == v
 
     db.delete_blob(db.get_blobs('test2')['b'])
     del blob_data['b']

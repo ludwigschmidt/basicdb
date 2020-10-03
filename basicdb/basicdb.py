@@ -7,6 +7,7 @@ import msgpack
 import objectstash
 
 from .entities import *
+from .exceptions import *
 from .sql_adapter import SQLAdapter
 
 
@@ -41,7 +42,8 @@ class BasicDB:
                  username=None,
                  include_fqdn_in_username=True,
                  stash_blob_prefix='basicdb_stash',
-                 max_extra_fields_size=1024):
+                 max_extra_fields_size=1024,
+                 allow_hard_delete=False):
         if username is None:
             if include_fqdn_in_username:
                 self.username = getpass.getuser() + '@' + socket.getfqdn()
@@ -52,7 +54,11 @@ class BasicDB:
         self.namespace = namespace
         # Database initialization
         if sql_string is not None:
+            assert db_adapter is None
             self.db_adapter = SQLAdapter(sql_string, **db_kwargs)
+        else:
+            assert db_adapter is not None
+            self.db_adapter = db_adapter
         # Object stash initialization
         if object_stash is not None:
             self.stash = object_stash
@@ -70,6 +76,7 @@ class BasicDB:
         self.stash_blob_prefix = pathlib.Path(stash_blob_prefix)
         self.serialization = 'pickle'
         self.max_extra_fields_size = max_extra_fields_size
+        self.allow_hard_delete = allow_hard_delete
     
     def serialize(self, data):
         return pickle.dumps(data)
@@ -103,7 +110,8 @@ class BasicDB:
         if namespace is None:
             namespace = self.namespace
         else:
-            assert self.namespace is None or namespace == self.namespace
+            if self.namespace is not None and namespace != self.namespace:
+                raise NamespaceError
         assert isinstance(extra, dict)
         extra_data = msgpack.packb(extra)
         if self.max_extra_fields_size is not None:
@@ -190,7 +198,8 @@ class BasicDB:
                 kwargs['extra'] = object_identifier.extra
         if 'namespace' in kwargs:
             if self.namespace is not None:
-                assert self.namespace == kwargs['namespace']
+                if self.namespace != kwargs['namespace']:
+                    raise NamespaceError
         if 'extra' in kwargs:
             assert isinstance(kwargs['extra'], dict)
             kwargs['extra_data'] = msgpack.packb(kwargs['extra'])
@@ -198,11 +207,15 @@ class BasicDB:
             if self.max_extra_fields_size is not None:
                 assert len(kwargs['extra_data']) <= self.max_extra_fields_size
         self.db_adapter.update_object(object_identifier=uuid_if_object(object_identifier),
-                                      update_kwargs=kwargs)
+                                      update_kwargs=kwargs,
+                                      namespace=self.namespace)
 
 
-
+    # TODO: cascading deletes?
     def delete(self, to_delete, hide_only=True):
+        if not hide_only:
+            assert self.allow_hard_delete
+            raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):
             for x in to_delete:
@@ -442,6 +455,7 @@ class BasicDB:
                     to_delete,
                     hide_only=True):
         if not hide_only:
+            assert self.allow_hard_delete
             raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):
@@ -509,6 +523,7 @@ class BasicDB:
                             to_delete,
                             hide_only=True):
         if not hide_only:
+            assert self.allow_hard_delete
             raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):

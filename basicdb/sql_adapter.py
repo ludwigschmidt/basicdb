@@ -224,7 +224,7 @@ class SQLAdapter(DBAdapter):
             assert relationship_first is not None or relationship_second is not None
         assert not (relationship_first is not None and relationship_second is not None)
         singular_query = False
-        if uuid is not None or name is not None:
+        if uuid is not None or (name is not None and filter_namespace):
             singular_query = True
 
         options = []
@@ -279,11 +279,12 @@ class SQLAdapter(DBAdapter):
     def update_object(self,
                       object_identifier,
                       update_kwargs,
+                      namespace,
                       session=None):
         def query(sess):
             cur_obj = self.get_object_from_identifier(object_identifier,
-                                                      check_namespace=False,
-                                                      namespace=None,
+                                                      check_namespace=namespace is not None,
+                                                      namespace=namespace,
                                                       assert_exists=True,
                                                       include_hidden=True,
                                                       session=sess)
@@ -299,7 +300,7 @@ class SQLAdapter(DBAdapter):
                 elif keyword == 'type_':
                     cur_obj.type_ = new_value
                 elif keyword == 'namespace':
-                    cur_obj.namespace_ = new_value
+                    cur_obj.namespace = new_value
                 else:
                     raise ValueError
             cur_obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
@@ -346,7 +347,7 @@ class SQLAdapter(DBAdapter):
                                    convert_to_public_class=convert_to_public_class)
         else:
             return self.get_object(name=uuid_or_name,
-                                   filter_namespace=check_namespace,
+                                   filter_namespace=True,
                                    namespace=namespace,
                                    session=session,
                                    include_hidden=include_hidden,
@@ -368,9 +369,9 @@ class SQLAdapter(DBAdapter):
         try:
             with self.session_scope() as session:
                 obj = self.get_object_from_identifier(object_identifier,
-                                                    check_namespace,
-                                                    namespace_to_check,
-                                                    session)
+                                                      check_namespace,
+                                                      namespace_to_check,
+                                                      session)
                 assert obj is not None
                 new_blob = Blob(uuid=new_uuid,
                                 parent=obj.uuid,
