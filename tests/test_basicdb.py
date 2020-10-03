@@ -11,7 +11,7 @@ from basicdb import __version__, BasicDB, IntegrityError
 
 
 def test_version():
-    assert __version__ == '0.0.2'
+    assert __version__ == '0.0.3'
 
 
 def simple_test(db):
