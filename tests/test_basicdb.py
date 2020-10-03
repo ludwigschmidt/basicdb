@@ -1,13 +1,17 @@
 import datetime
+import os
 import uuid
 
+import boto3
+from moto import mock_s3
 import pytest
 
-from basicdb import __version__, BasicDB
+import basicdb
+from basicdb import __version__, BasicDB, IntegrityError
 
 
 def test_version():
-    assert __version__ == '0.0.1'
+    assert __version__ == '0.0.2'
 
 
 def simple_test(db):
@@ -77,12 +81,21 @@ def simple_test(db):
     assert res.username == 'third_person'
     assert res.not_a_field == 'hello setattr'
 
+    with pytest.raises(IntegrityError):
+        db.insert(name='test1')
+    
+    with pytest.raises(IntegrityError):
+        db.update('test1', new_name='test3')
+
 
 def simple_blob_test(db):
     blob_data = [2, 3, 5, 7, 11]
     db.insert(name='test1', blob=blob_data)
     loaded_blob = db.load_blob('test1')
     assert loaded_blob == blob_data
+    
+    with pytest.raises(IntegrityError):
+        db.insert_blob('test1', name=None, data=b'')
 
     test_obj2 = db.insert(name='test2')
     blob_data = {'a': 0,
@@ -146,6 +159,9 @@ def simple_blob_test(db):
     assert set([x.name for x in blobs.values()]) == set([None, 'test1'])
     assert blobs['test1'][1] == 2
 
+    with pytest.raises(IntegrityError):
+        db.update_blob('test1', 'test1', new_name=None)
+
 
 def simple_relationship_test(db):
     test1 = db.insert(name='test1')
@@ -153,6 +169,9 @@ def simple_relationship_test(db):
     test3 = db.insert(name='test3')
     db.insert_relationship(first='test1', second='test2', type_='child')
     db.insert_relationship(first='test3', second='test2', type_='child2')
+    
+    with pytest.raises(IntegrityError):
+        db.insert_relationship(first='test3', second='test2', type_='child2')
 
     tmp = db.get_relationship(first='test1')
     assert len(tmp) == 1
@@ -207,6 +226,10 @@ def simple_relationship_test(db):
     assert set([x.first for x in tmp]) == set([test3.uuid])
     assert set([x.second for x in tmp]) == set([test2.uuid])
     assert set([x.type_ for x in tmp]) == set(['child2'])
+    
+    db.insert_relationship(first='test3', second='test2')
+    with pytest.raises(IntegrityError):
+        db.insert_relationship(first='test3', second='test2')
 
 
 def simple_relationship_query_test(db):
@@ -239,6 +262,16 @@ def simple_relationship_query_test(db):
     assert set([x.name for x in res]) == set(['parent1'])
 
 
+def generic_s3_setup(bucket_name='test_bucket'):
+    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
+    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
+    os.environ['AWS_SESSION_TOKEN'] = 'testing'
+
+    conn = boto3.resource('s3', region_name='us-east-1')
+    conn.create_bucket(Bucket=bucket_name)
+
+
 def test_simple_sqlite_fs(tmp_path):
     db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
     simple_test(db)
@@ -249,6 +282,20 @@ def test_simple_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_test(db)
+
+
+def test_simple_blobs_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
+    simple_blob_test(db)
+
+
+@mock_s3
+def test_simple_blobs_sqlite_s3(tmp_path):
+    generic_s3_setup('test_bucket')
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_s3_bucket='test_bucket')
+    simple_blob_test(db)
 
 
 def test_simple_blobs_namespace_sqlite_fs(tmp_path):

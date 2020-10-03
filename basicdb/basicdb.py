@@ -32,6 +32,7 @@ class BasicDB:
     def __init__(self,
                  sql_string=None,
                  stash_rootdir=None,
+                 stash_s3_bucket=None,
                  namespace=None,
                  db_kwargs={},
                  stash_kwargs={},
@@ -56,9 +57,14 @@ class BasicDB:
         if object_stash is not None:
             self.stash = object_stash
             assert stash_rootdir is None
+            assert stash_s3_bucket is None
         else:
             if stash_rootdir is not None:
+                assert stash_s3_bucket is None
                 self.stash = objectstash.ObjectStash(rootdir=stash_rootdir, **stash_kwargs)
+            elif stash_s3_bucket is not None:
+                assert stash_rootdir is None
+                self.stash = objectstash.ObjectStash(s3_bucket=stash_s3_bucket, **stash_kwargs)
             else:
                 raise ValueError('No known ObjectStash implementation identified.')
         self.stash_blob_prefix = pathlib.Path(stash_blob_prefix)

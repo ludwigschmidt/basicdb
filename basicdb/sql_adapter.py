@@ -9,6 +9,7 @@ import sqlalchemy_utils
 from . import basicdb
 from .db_adapter import DBAdapter
 from . import entities
+from . import exceptions
 from . import utils
 
 
@@ -53,15 +54,16 @@ class Object(sqlalchemy_base):
     __tablename__ = 'objects'
     uuid = sqla.Column(GenericUUID, primary_key=True)
     namespace = sqla.Column(sqla.String)
-    name = sqla.Column(sqla.String)
+    name = sqla.Column(sqla.String, nullable=False)
     type_ = sqla.Column(sqla.String)
     creation_time = sqla.Column(sqla.DateTime(timezone=False), server_default=sqla.sql.func.now())
     modification_time = sqla.Column(sqla.DateTime(timezone=False))
-    hidden = sqla.Column(sqla.Boolean)
+    hidden = sqla.Column(sqla.Boolean, nullable=False)
     username = sqla.Column(sqla.String)
     extra_data = sqla.Column(sqla.LargeBinary)
+    __table_args__ = (sqla.Index('object_unique1', 'namespace', 'name', unique=True, postgresql_where=namespace.isnot(None), sqlite_where=namespace.isnot(None)),
+                      sqla.Index('object_unique2', 'name',              unique=True, postgresql_where=namespace.is_(None),   sqlite_where=namespace.is_(None)))
 
-    sqla.UniqueConstraint('namespace', 'name')
 
     def __repr__(self):
         return f'<Object(uuid="{self.uuid.hex}", namespace="{self.namespace}", name="{self.name}")>'
@@ -81,19 +83,19 @@ class Object(sqlalchemy_base):
 class Blob(sqlalchemy_base):
     __tablename__ = 'blobs'
     uuid = sqla.Column(GenericUUID, primary_key=True)
-    # TODO: add foreign key constraint
-    parent = sqla.Column(GenericUUID)
+    # TODO: add foreign key constraint ?
+    parent = sqla.Column(GenericUUID, nullable=False)
     name = sqla.Column(sqla.String)
     type_ = sqla.Column(sqla.String)
     size = sqla.Column(sqla.Integer)
     creation_time = sqla.Column(sqla.DateTime(timezone=False), server_default=sqla.sql.func.now())
     modification_time = sqla.Column(sqla.DateTime(timezone=False))
-    hidden = sqla.Column(sqla.Boolean)
+    hidden = sqla.Column(sqla.Boolean, nullable=False)
     username = sqla.Column(sqla.String)
     serialization = sqla.Column(sqla.String)
     extra_data = sqla.Column(sqla.LargeBinary)
-
-    sqla.UniqueConstraint('parent', 'name')
+    __table_args__ = (sqla.Index('blob_unique1', 'parent', 'name', unique=True, postgresql_where=name.isnot(None), sqlite_where=name.isnot(None)),
+                      sqla.Index('blob_unique2', 'parent',         unique=True, postgresql_where=name.is_(None),   sqlite_where=name.is_(None)))
 
     def __repr__(self):
         return f'<Blob(uuid="{self.uuid.hex}", parent="{self.parent}", name="{self.name}")>'
@@ -115,13 +117,13 @@ class Blob(sqlalchemy_base):
 class Relationship(sqlalchemy_base):
     __tablename__ = 'relationships'
     uuid = sqla.Column(GenericUUID, primary_key=True)
-    # TODO: add foreign key constraint
-    first = sqla.Column(GenericUUID)
-    second = sqla.Column(GenericUUID)
+    # TODO: add foreign key constraint ?
+    first = sqla.Column(GenericUUID, nullable=False)
+    second = sqla.Column(GenericUUID, nullable=False)
     type_ = sqla.Column(sqla.String)
-    hidden = sqla.Column(sqla.Boolean)
-
-    sqla.UniqueConstraint('first', 'second', 'type_')
+    hidden = sqla.Column(sqla.Boolean, nullable=False)
+    __table_args__ = (sqla.Index('relationship_unique1', 'first', 'second', 'type_', unique=True, postgresql_where=type_.isnot(None), sqlite_where=type_.isnot(None)),
+                      sqla.Index('relationship_unique2', 'first', 'second',          unique=True, postgresql_where=type_.is_(None),   sqlite_where=type_.is_(None)))
 
     def __repr__(self):
         return f'<Relationship(uuid="{self.uuid.hex}", first="{self.first.hex}", second="{self.second.hex}")>'
@@ -184,16 +186,19 @@ class SQLAdapter(DBAdapter):
         new_uuid = uuid.uuid4()
         if name is None:
             name = new_uuid
-        with self.session_scope() as session:
-            new_obj = Object(uuid=new_uuid,
-                             namespace=namespace,
-                             name=name,
-                             type_=type_,
-                             hidden=False,
-                             username=username,
-                             modification_time=None,
-                             extra_data=extra_data)
-            session.add(new_obj)
+        try:
+            with self.session_scope() as session:
+                new_obj = Object(uuid=new_uuid,
+                                namespace=namespace,
+                                name=name,
+                                type_=type_,
+                                hidden=False,
+                                username=username,
+                                modification_time=None,
+                                extra_data=extra_data)
+                session.add(new_obj)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
         if return_result:
             return self.get_object(uuid=new_uuid,
                                    assert_exists=True,
@@ -298,7 +303,10 @@ class SQLAdapter(DBAdapter):
                 else:
                     raise ValueError
             cur_obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
-        return self.run_query_with_optional_session(query, session=session)
+        try:
+            return self.run_query_with_optional_session(query, session=session)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
     
     def delete_objects(self,
                        uuids,
@@ -357,23 +365,26 @@ class SQLAdapter(DBAdapter):
                     check_namespace,
                     namespace_to_check):
         new_uuid = uuid.uuid4()
-        with self.session_scope() as session:
-            obj = self.get_object_from_identifier(object_identifier,
-                                                  check_namespace,
-                                                  namespace_to_check,
-                                                  session)
-            assert obj is not None
-            new_blob = Blob(uuid=new_uuid,
-                            parent=obj.uuid,
-                            name=name,
-                            type_=type_,
-                            size=size,
-                            hidden=False,
-                            username=username,
-                            modification_time=None,
-                            serialization=serialization,
-                            extra_data=extra_data)
-            session.add(new_blob)
+        try:
+            with self.session_scope() as session:
+                obj = self.get_object_from_identifier(object_identifier,
+                                                    check_namespace,
+                                                    namespace_to_check,
+                                                    session)
+                assert obj is not None
+                new_blob = Blob(uuid=new_uuid,
+                                parent=obj.uuid,
+                                name=name,
+                                type_=type_,
+                                size=size,
+                                hidden=False,
+                                username=username,
+                                modification_time=None,
+                                serialization=serialization,
+                                extra_data=extra_data)
+                session.add(new_blob)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
         if return_result:
             return self.get_blobs(uuid=new_uuid,
                                   assert_exists=True,
@@ -495,7 +506,10 @@ class SQLAdapter(DBAdapter):
                     raise ValueError
             cur_blob.modification_time = datetime.datetime.now(datetime.timezone.utc)
             return cur_blob.uuid
-        return self.run_query_with_optional_session(query, session=session)
+        try:
+            return self.run_query_with_optional_session(query, session=session)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
 
     def delete_blobs(self,
                      uuids,
@@ -525,23 +539,26 @@ class SQLAdapter(DBAdapter):
                             check_namespace,
                             namespace_to_check):
         new_uuid = uuid.uuid4()
-        with self.session_scope() as session:
-            first = self.get_object_from_identifier(first,
-                                                    check_namespace,
-                                                    namespace_to_check,
-                                                    session)
-            assert first is not None
-            second = self.get_object_from_identifier(second,
-                                                     check_namespace,
-                                                     namespace_to_check,
-                                                     session)
-            assert second is not None
-            new_rel = Relationship(uuid=new_uuid,
-                                   first=first.uuid,
-                                   second=second.uuid,
-                                   type_=type_,
-                                   hidden=False)
-            session.add(new_rel)
+        try:
+            with self.session_scope() as session:
+                first = self.get_object_from_identifier(first,
+                                                        check_namespace,
+                                                        namespace_to_check,
+                                                        session)
+                assert first is not None
+                second = self.get_object_from_identifier(second,
+                                                        check_namespace,
+                                                        namespace_to_check,
+                                                        session)
+                assert second is not None
+                new_rel = Relationship(uuid=new_uuid,
+                                    first=first.uuid,
+                                    second=second.uuid,
+                                    type_=type_,
+                                    hidden=False)
+                session.add(new_rel)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
         if return_result:
             return self.get_relationships(uuid=new_uuid,
                                           assert_exists=True,
@@ -675,7 +692,10 @@ class SQLAdapter(DBAdapter):
                 assert len(rel) == 1
                 rel = rel[0]
             rel.type_ = new_type
-        self.run_query_with_optional_session(query, session=session)
+        try:
+            return self.run_query_with_optional_session(query, session=session)
+        except sqla.exc.IntegrityError as e:
+            raise exceptions.IntegrityError from e
 
     def delete_relationships(self,
                              uuids,
