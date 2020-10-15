@@ -56,6 +56,7 @@ class Object(sqlalchemy_base):
     namespace = sqla.Column(sqla.String)
     name = sqla.Column(sqla.String, nullable=False)
     type_ = sqla.Column(sqla.String)
+    subtype = sqla.Column(sqla.String)
     creation_time = sqla.Column(sqla.DateTime(timezone=False), server_default=sqla.sql.func.now())
     modification_time = sqla.Column(sqla.DateTime(timezone=False))
     hidden = sqla.Column(sqla.Boolean, nullable=False)
@@ -73,6 +74,7 @@ class Object(sqlalchemy_base):
                                namespace=self.namespace,
                                name=self.name,
                                type_=self.type_,
+                               subtype=self.subtype,
                                creation_time=self.creation_time.replace(tzinfo=datetime.timezone.utc),
                                modification_time=self.modification_time.replace(tzinfo=datetime.timezone.utc) if self.modification_time is not None else None,
                                hidden=self.hidden,
@@ -180,6 +182,7 @@ class SQLAdapter(DBAdapter):
                       namespace,
                       name=None,
                       type_=None,
+                      subtype=None,
                       username=None,
                       extra_data=None,
                       return_result=False):
@@ -192,6 +195,7 @@ class SQLAdapter(DBAdapter):
                                 namespace=namespace,
                                 name=name,
                                 type_=type_,
+                                subtype=subtype,
                                 hidden=False,
                                 username=username,
                                 modification_time=None,
@@ -212,6 +216,7 @@ class SQLAdapter(DBAdapter):
                    name=None,
                    names=None,
                    type_=None,
+                   subtype=None,
                    include_hidden=False,
                    relationship_first=None,
                    relationship_second=None,
@@ -243,6 +248,8 @@ class SQLAdapter(DBAdapter):
             filters.append(Object.namespace == namespace)
         if type_ is not None:
             filters.append(Object.type_ == type_)
+        if subtype is not None:
+            filters.append(Object.subtype == subtype)
 
         def query(sess):
             if relationship_first is not None or relationship_second is not None:
@@ -299,6 +306,8 @@ class SQLAdapter(DBAdapter):
                     cur_obj.extra_data = new_value
                 elif keyword == 'type_':
                     cur_obj.type_ = new_value
+                elif keyword == 'subtype':
+                    cur_obj.subtype = new_value
                 elif keyword == 'namespace':
                     cur_obj.namespace = new_value
                 else:

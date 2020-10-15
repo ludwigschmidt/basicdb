@@ -9,6 +9,7 @@ class Object:
     namespace: str
     name: str
     type_: str
+    subtype: str
     creation_time: datetime.datetime
     modification_time: datetime.datetime
     hidden: bool

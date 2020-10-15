@@ -95,6 +95,7 @@ class BasicDB:
                namespace=None,
                name=None,
                type_=None,
+               subtype=None,
                username=None,
                extra={},
                blob=None,
@@ -120,6 +121,7 @@ class BasicDB:
             return self.db_adapter.insert_object(namespace=namespace,
                                                  name=name,
                                                  type_=type_,
+                                                 subtype=subtype,
                                                  username=username,
                                                  extra_data=extra_data,
                                                  return_result=return_result)
@@ -127,6 +129,7 @@ class BasicDB:
             new_obj = self.db_adapter.insert_object(namespace=namespace,
                                                     name=name,
                                                     type_=type_,
+                                                    subtype=subtype,
                                                     username=username,
                                                     extra_data=extra_data,
                                                     return_result=True)
@@ -149,6 +152,7 @@ class BasicDB:
             name=None,
             names=None,
             type_=None,
+            subtype=None,
             include_hidden=False,
             rel_first=None,
             rel_second=None,
@@ -168,12 +172,15 @@ class BasicDB:
             assert names is None
         if names is not None:
             assert name is None
+        if subtype is not None:
+            assert type_ is not None
         return self.db_adapter.get_object(uuid=uuid,
                                           uuids=uuids,
                                           namespace=namespace,
                                           name=name,
                                           names=names,
                                           type_=type_,
+                                          subtype=subtype,
                                           include_hidden=include_hidden,
                                           relationship_first=uuid_if_object(rel_first),
                                           relationship_second=uuid_if_object(rel_second),
@@ -182,12 +189,14 @@ class BasicDB:
     
     def update(self, object_identifier, **kwargs):
         for keyword in kwargs:
-            assert keyword in ['new_name', 'type_', 'namespace', 'hidden', 'username', 'extra']
+            assert keyword in ['new_name', 'type_', 'subtype', 'namespace', 'hidden', 'username', 'extra']
         if isinstance(object_identifier, Object):
             if 'new_name' not in kwargs:
                 kwargs['new_name'] = object_identifier.name
             if 'type_' not in kwargs:
                 kwargs['type_'] = object_identifier.type_
+            if 'subtype' not in kwargs:
+                kwargs['subtype'] = object_identifier.subtype
             if 'namespace' not in kwargs:
                 kwargs['namespace'] = object_identifier.namespace
             if 'hidden' not in kwargs:

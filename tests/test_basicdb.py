@@ -28,6 +28,7 @@ def simple_test(db):
         assert res.foo2 == 'bar'
     assert res.namespace == db.namespace
     assert res.type_ is None
+    assert res.subtype is None
     assert not res.hidden
     assert res.username is not None
     assert (res.creation_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds() <= 1
@@ -105,6 +106,25 @@ def simple_test(db):
             test1_space1 = db.insert(name='test1', namespace='space1')
         with pytest.raises(NamespaceError):
             db.update('test1', namespace='space1')
+
+
+def simple_type_test(db):
+    db.insert(name='test1', type_='a', subtype='a1')
+    db.insert(name='test2', type_='b', subtype='b1')
+    db.insert(name='test3', type_='b', subtype='b1')
+    db.insert(name='test4', type_='a')
+    db.insert(name='test5', type_='a', subtype='a2')
+
+    assert set([x.name for x in db.get(type_='a')]) == set(['test1', 'test4', 'test5'])
+    assert set([x.name for x in db.get(type_='b')]) == set(['test2', 'test3'])
+    assert set([x.name for x in db.get(type_='b', subtype='b1')]) == set(['test2', 'test3'])
+    assert set([x.name for x in db.get(type_='a', subtype='a1')]) == set(['test1'])
+
+    db.update('test5', subtype='a1')
+    assert set([x.name for x in db.get(type_='a', subtype='a1')]) == set(['test1', 'test5'])
+    
+    db.update('test5', type_='c')
+    assert set([x.name for x in db.get(type_='a', subtype='a1')]) == set(['test1'])
 
 
 def simple_blob_test(db):
@@ -308,6 +328,18 @@ def test_simple_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_test(db)
+
+
+def test_simple_type_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
+    simple_type_test(db)
+
+
+def test_simple_type_namespace_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_type_test(db)
 
 
 def test_simple_blobs_sqlite_fs(tmp_path):

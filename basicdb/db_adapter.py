@@ -7,6 +7,7 @@ class DBAdapter(ABC):
                       namespace,
                       name,
                       type_,
+                      subtype,
                       username,
                       extra_data,
                       return_result):
@@ -20,6 +21,7 @@ class DBAdapter(ABC):
                    name,
                    names,
                    type_,
+                   subtype,
                    include_hidden,
                    relationship_first,
                    relationship_second,
