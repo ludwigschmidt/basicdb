@@ -108,6 +108,22 @@ def simple_test(db):
             db.update('test1', namespace='space1')
 
 
+def simple_noname_test(db):
+    db.insert(name='test1', extra={'foo': 'bar'})
+    assert set([x.name for x in db.get()]) == set(['test1'])
+
+    unnamed = db.insert(extra={'name': 'unnamed'})
+    assert set([x.name for x in db.get()]) == set(['test1', str(unnamed.uuid)])
+
+    res = db.get(name=str(unnamed.uuid))
+    assert res.uuid == unnamed.uuid
+
+    db.update(unnamed, new_name='test2')
+    
+    assert set([x.name for x in db.get()]) == set(['test1', 'test2'])
+    assert db.get(name=str(unnamed.uuid)) == None
+
+
 def simple_type_test(db):
     db.insert(name='test1', type_='a', subtype='a1')
     db.insert(name='test2', type_='b', subtype='b1')
@@ -328,6 +344,18 @@ def test_simple_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_test(db)
+
+
+def test_simple_noname_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
+    simple_noname_test(db)
+
+
+def test_simple_noname_namespace_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_noname_test(db)
 
 
 def test_simple_type_sqlite_fs(tmp_path):

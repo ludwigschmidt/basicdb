@@ -188,18 +188,18 @@ class SQLAdapter(DBAdapter):
                       return_result=False):
         new_uuid = uuid.uuid4()
         if name is None:
-            name = new_uuid
+            name = str(new_uuid)
         try:
             with self.session_scope() as session:
                 new_obj = Object(uuid=new_uuid,
-                                namespace=namespace,
-                                name=name,
-                                type_=type_,
-                                subtype=subtype,
-                                hidden=False,
-                                username=username,
-                                modification_time=None,
-                                extra_data=extra_data)
+                                 namespace=namespace,
+                                 name=name,
+                                 type_=type_,
+                                 subtype=subtype,
+                                 hidden=False,
+                                 username=username,
+                                 modification_time=None,
+                                 extra_data=extra_data)
                 session.add(new_obj)
         except sqla.exc.IntegrityError as e:
             raise exceptions.IntegrityError from e
