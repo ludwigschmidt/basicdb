@@ -244,6 +244,7 @@ class BasicDB:
     def insert_blob(self,
                     object_or_uuid,
                     name=None,
+                    *,
                     type_=None,
                     username=None,
                     extra={},
