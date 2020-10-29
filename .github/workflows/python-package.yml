@@ -28,7 +28,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - uses: dschep/install-poetry-action@v1.3
+    - uses: snok/install-poetry@v1.0.0
     - name: Install Dependencies using Poetry
       run: poetry install
     - name: Lint with flake8
