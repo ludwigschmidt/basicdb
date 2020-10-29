@@ -30,7 +30,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - uses: dschep/install-poetry-action@v1.3
     - name: Install Dependencies using Poetry
-        run: poetry install
+      run: poetry install
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
