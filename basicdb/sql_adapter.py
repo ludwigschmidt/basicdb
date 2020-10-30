@@ -257,6 +257,7 @@ class SQLAdapter(DBAdapter):
                                               second=relationship_second,
                                               type_=relationship_type,
                                               include_hidden=include_hidden,
+                                              namespace=namespace,
                                               filter_namespace=False,
                                               convert_to_public_class=False,
                                               assert_exists=False,
@@ -604,15 +605,19 @@ class SQLAdapter(DBAdapter):
                     first_obj = self.get_object_from_identifier(first,
                                                                 filter_namespace,
                                                                 namespace,
-                                                                sess)
-                    assert first is not None
+                                                                sess,
+                                                                include_hidden=include_hidden)
+                    if first_obj is None:
+                        return []
                     filters.append(Relationship.first == first_obj.uuid)
                 if second is not None:
                     second_obj = self.get_object_from_identifier(second,
                                                                  filter_namespace,
                                                                  namespace,
-                                                                 sess)
-                    assert second is not None
+                                                                 sess,
+                                                                 include_hidden=include_hidden)
+                    if second_obj is None:
+                        return []
                     filters.append(Relationship.second == second_obj.uuid)
                 cur_res = sess.query(Relationship).options(options).filter(*filters).all()
                 if first is None and second is None and filter_namespace:
