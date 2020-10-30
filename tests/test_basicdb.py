@@ -13,7 +13,6 @@ from basicdb import __version__, BasicDB, IntegrityError, NamespaceError
 def test_version():
     assert __version__ == '0.0.7'
 
-
 def simple_test(db):
     db.insert(name='test1',
               extra={'foo': 'bar'})
@@ -423,3 +422,26 @@ def test_simple_relationship_queries_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_relationship_query_test(db)
+
+def test_relationship_by_name(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+
+    tag = db.insert(type_='tag', name="tag_name")
+    evaluation = db.insert(type_="evaluation", name="eval")
+    db.insert_relationship(first=tag, second=evaluation)
+
+    fetch_by_obj = db.get(rel_first=tag, type_="evaluation")
+    assert len(fetch_by_obj) == 1
+    assert fetch_by_obj[0].uuid == evaluation.uuid
+
+    fetch_by_uuid = db.get(rel_first=tag.uuid, type_="evaluation")
+    assert len(fetch_by_uuid) == 1
+    assert fetch_by_uuid[0].uuid == evaluation.uuid
+    
+    fetch_by_name = db.get(rel_first=tag.name, type_="evaluation")
+    assert len(fetch_by_name) == 1
+    assert fetch_by_name[0].uuid == evaluation.uuid
