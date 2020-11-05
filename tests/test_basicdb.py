@@ -142,6 +142,14 @@ def simple_type_test(db):
     assert set([x.name for x in db.get(type_='a', subtype='a1')]) == set(['test1'])
 
 
+def simple_extra_test(db):
+    db.insert(name='test1', extra={0: [1, 2], 1: (3, 4)})
+    res = db.get(name='test1')
+    assert len(res.extra) == 2
+    assert res.extra[0] == [1, 2]
+    assert res.extra[1] == (3, 4)
+
+
 def simple_blob_test(db):
     blob_data = [2, 3, 5, 7, 11]
     db.insert(name='test1', blob=blob_data)
@@ -367,6 +375,18 @@ def test_simple_type_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_type_test(db)
+
+
+def test_simple_extra_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
+    simple_extra_test(db)
+
+
+def test_simple_extra_namespace_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:',
+                 stash_rootdir=tmp_path,
+                 namespace='test_namespace')
+    simple_extra_test(db)
 
 
 def test_simple_blobs_sqlite_fs(tmp_path):

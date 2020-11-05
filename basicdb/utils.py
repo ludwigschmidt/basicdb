@@ -1,11 +1,31 @@
 import uuid
 
+import msgpack
+import pytest
 
-def gen_short_uuid_string(cur_uuid):
-    num = cur_uuid.int
-    alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-    res = []
-    while num > 0:
-        num, digit = divmod(num, len(alphabet))
-        res.append(alphabet[digit])
-    return ''.join(reversed(res))
+
+def default(obj):
+    if type(obj) is tuple:
+        return msgpack.ExtType(10, pack_extra(list(obj)))
+    else:
+        raise TypeError(f'Unknown type: "{type(obj)}"')
+
+
+def pack_extra(extra):
+    return msgpack.packb(extra,
+                         default=default,
+                         strict_types=True,
+                         use_bin_type=True)
+
+
+def ext_hook(code, data):
+    if code == 10:
+        return tuple(unpack_extra(data))
+    else:
+        return msgpack.ExtType(code, data)
+
+
+def unpack_extra(extra_bytes):
+    return msgpack.unpackb(extra_bytes,
+                           ext_hook=ext_hook,
+                           strict_map_key=False)

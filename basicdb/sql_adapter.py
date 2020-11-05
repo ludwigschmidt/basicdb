@@ -2,7 +2,6 @@ import contextlib
 import datetime
 import uuid
 
-import msgpack
 import sqlalchemy as sqla
 import sqlalchemy_utils
 
@@ -79,7 +78,7 @@ class Object(sqlalchemy_base):
                                modification_time=self.modification_time.replace(tzinfo=datetime.timezone.utc) if self.modification_time is not None else None,
                                hidden=self.hidden,
                                username=self.username,
-                               extra=msgpack.unpackb(self.extra_data, strict_map_key=False))
+                               extra=utils.unpack_extra(self.extra_data))
 
 
 class Blob(sqlalchemy_base):
@@ -113,7 +112,7 @@ class Blob(sqlalchemy_base):
                              hidden=self.hidden,
                              username=self.username,
                              serialization=self.serialization,
-                             extra=msgpack.unpackb(self.extra_data, strict_map_key=False))
+                             extra=utils.unpack_extra(self.extra_data))
 
 
 class Relationship(sqlalchemy_base):

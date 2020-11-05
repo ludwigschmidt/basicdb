@@ -9,6 +9,7 @@ import objectstash
 from .entities import *
 from .exceptions import *
 from .sql_adapter import SQLAdapter
+from . import utils
 
 
 def uuid_if_object(x):
@@ -114,7 +115,7 @@ class BasicDB:
             if self.namespace is not None and namespace != self.namespace:
                 raise NamespaceError
         assert isinstance(extra, dict)
-        extra_data = msgpack.packb(extra)
+        extra_data = utils.pack_extra(extra)
         if self.max_extra_fields_size is not None:
             assert len(extra_data) <= self.max_extra_fields_size
         if not also_insert_blobs:
@@ -211,7 +212,7 @@ class BasicDB:
                     raise NamespaceError
         if 'extra' in kwargs:
             assert isinstance(kwargs['extra'], dict)
-            kwargs['extra_data'] = msgpack.packb(kwargs['extra'])
+            kwargs['extra_data'] = utils.pack_extra(kwargs['extra'])
             del kwargs['extra']
             if self.max_extra_fields_size is not None:
                 assert len(kwargs['extra_data']) <= self.max_extra_fields_size
@@ -259,7 +260,7 @@ class BasicDB:
         if username is None:
             username = self.username
         assert isinstance(extra, dict)
-        extra_data = msgpack.packb(extra)
+        extra_data = utils.pack_extra(extra)
         if self.max_extra_fields_size is not None:
             assert len(extra_data) <= self.max_extra_fields_size
         new_blob = self.db_adapter.insert_blob(
@@ -448,7 +449,7 @@ class BasicDB:
             kwargs['size'] = len(new_data)
         if 'extra' in kwargs:
             assert isinstance(kwargs['extra'], dict)
-            kwargs['extra_data'] = msgpack.packb(kwargs['extra'])
+            kwargs['extra_data'] = utils.pack_extra(kwargs['extra'])
             del kwargs['extra']
             if self.max_extra_fields_size is not None:
                 assert len(kwargs['extra_data']) <= self.max_extra_fields_size
