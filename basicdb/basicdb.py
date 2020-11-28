@@ -220,12 +220,9 @@ class BasicDB:
                                       update_kwargs=kwargs,
                                       namespace=self.namespace)
 
-
-    # TODO: cascading deletes?
     def delete(self, to_delete, hide_only=True):
         if not hide_only:
             assert self.allow_hard_delete
-            raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):
             for x in to_delete:
@@ -467,17 +464,19 @@ class BasicDB:
                     hide_only=True):
         if not hide_only:
             assert self.allow_hard_delete
-            raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):
             for x in to_delete:
                 uuid_list.append(uuid_if_blob(x))
         else:
             uuid_list.append(uuid_if_blob(to_delete))
-        return self.db_adapter.delete_blobs(uuids=uuid_list,
-                                            hide_only=hide_only,
-                                            check_namespace=self.namespace is not None,
-                                            namespace_to_check=self.namespace)
+        self.db_adapter.delete_blobs(uuids=uuid_list,
+                                     hide_only=hide_only,
+                                     check_namespace=self.namespace is not None,
+                                     namespace_to_check=self.namespace)
+        if not hide_only:
+            for uuid in uuid_list:
+                self.stash.delete(self.get_blob_key(uuid))
     
     def insert_relationship(self,
                             first,
@@ -509,13 +508,14 @@ class BasicDB:
                                                  filter_namespace=self.namespace is not None,
                                                  namespace=self.namespace,
                                                  include_hidden=include_hidden)
-    
+
     def update_relationship(self,
                             first=None,
                             second=None,
                             type_=None,
                             uuid=None,
-                            new_type=None):
+                            new_type=None,
+                            hidden=None):
         if isinstance(first, Relationship):
             assert second is None
             assert type_ is None
@@ -527,6 +527,7 @@ class BasicDB:
                                                    type_=type_,
                                                    uuid=uuid,
                                                    new_type=new_type,
+                                                   hidden=hidden,
                                                    check_namespace=self.namespace is not None,
                                                    namespace_to_check=self.namespace)
     
@@ -535,7 +536,6 @@ class BasicDB:
                             hide_only=True):
         if not hide_only:
             assert self.allow_hard_delete
-            raise NotImplementedError
         uuid_list = []
         if isinstance(to_delete, list):
             for x in to_delete:

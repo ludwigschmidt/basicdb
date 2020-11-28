@@ -125,6 +125,7 @@ class DBAdapter(ABC):
                             type_,
                             uuid,
                             new_type,
+                            hidden,
                             check_namespace,
                             namespace_to_check):
         pass

@@ -323,19 +323,29 @@ class SQLAdapter(DBAdapter):
                        hide_only,
                        check_namespace,
                        namespace_to_check):
-        if not hide_only:
-            raise NotImplementedError
         with self.session_scope() as session:
             objs = self.get_object(uuids=uuids,
                                    session=session,
-                                   include_hidden=False,
+                                   include_hidden=True,
                                    filter_namespace=check_namespace,
                                    namespace=namespace_to_check,
                                    convert_to_public_class=False)
             assert len(objs) == len(uuids)
             for obj in objs:
-                obj.hidden = True
-                obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
+                if hide_only:
+                    obj.hidden = True
+                    obj.modification_time = datetime.datetime.now(datetime.timezone.utc)
+                else:
+                    # TODO: can probably make this faster by using key constraints instead
+                    if len(self.get_blobs(obj.uuid, include_hidden=True)) != 0:
+                        raise exceptions.DeletionError(f'Object {obj.uuid} still has {len(self.get_blobs(obj.uuid))} blobs')
+                    num_first_relationships = len(self.get_relationships(first=obj.uuid, include_hidden=True))
+                    if num_first_relationships != 0:
+                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the first element in {num_first_relationships} blobs')
+                    num_second_relationships = len(self.get_relationships(second=obj.uuid, include_hidden=True))
+                    if num_second_relationships != 0:
+                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the second element in {num_second_relationships} blobs')
+                    session.delete(obj)
    
     # TODO: merge this into get ?
     def get_object_from_identifier(self,
@@ -526,19 +536,20 @@ class SQLAdapter(DBAdapter):
                      hide_only,
                      check_namespace,
                      namespace_to_check):
-        if not hide_only:
-            raise NotImplementedError
         with self.session_scope() as session:
             blobs = self.get_blobs(uuids=uuids,
-                                   include_hidden=False,
+                                   include_hidden=True,
                                    check_namespace=check_namespace,
                                    namespace_to_check=namespace_to_check,
                                    convert_to_public_class=False,
                                    session=session)
             assert len(blobs) == len(uuids)
             for blob in blobs:
-                blob.hidden = True
-                blob.modification_time = datetime.datetime.now(datetime.timezone.utc)
+                if hide_only:
+                    blob.hidden = True
+                    blob.modification_time = datetime.datetime.now(datetime.timezone.utc)
+                else:
+                    session.delete(blob)
 
     def insert_relationship(self,
                             *,
@@ -689,6 +700,7 @@ class SQLAdapter(DBAdapter):
                             type_,
                             uuid,
                             new_type,
+                            hidden,
                             check_namespace,
                             namespace_to_check,
                             session=None):
@@ -699,13 +711,17 @@ class SQLAdapter(DBAdapter):
                                          uuid=uuid,
                                          filter_namespace=check_namespace,
                                          namespace=namespace_to_check,
+                                         include_hidden=True,
                                          assert_exists=True,
                                          convert_to_public_class=False,
                                          session=sess)
             if isinstance(rel, list):
                 assert len(rel) == 1
                 rel = rel[0]
-            rel.type_ = new_type
+            if new_type is not None:
+                rel.type_ = new_type
+            if hidden is not None:
+                rel.hidden = hidden
         try:
             return self.run_query_with_optional_session(query, session=session)
         except sqla.exc.IntegrityError as e:
@@ -716,16 +732,17 @@ class SQLAdapter(DBAdapter):
                              hide_only,
                              check_namespace,
                              namespace_to_check):
-        if not hide_only:
-            raise NotImplementedError
         with self.session_scope() as session:
             rels = self.get_relationships(
                     uuids=uuids,
-                    include_hidden=False,
+                    include_hidden=True,
                     filter_namespace=check_namespace,
                     namespace=namespace_to_check,
                     convert_to_public_class=False,
                     session=session)
             assert len(rels) == len(uuids)
             for rel in rels:
-                rel.hidden = True
+                if hide_only:
+                    rel.hidden = True
+                else:
+                    session.delete(rel)

@@ -7,7 +7,7 @@ from moto import mock_s3
 import pytest
 
 import basicdb
-from basicdb import __version__, BasicDB, IntegrityError, NamespaceError
+from basicdb import __version__, BasicDB, DeletionError, IntegrityError, NamespaceError
 
 
 def test_version():
@@ -148,6 +148,88 @@ def simple_extra_test(db):
     assert len(res.extra) == 2
     assert res.extra[0] == [1, 2]
     assert res.extra[1] == (3, 4)
+
+
+def simple_real_delete_test(db, allow_hard_delete):
+    db.insert(name='test1')
+    res = db.get()
+    assert len(res) == 1
+    obj1 = res[0]
+
+    db.delete(obj1)
+    assert len(db.get()) == 0
+    res = db.get(include_hidden=True)
+    assert len(res) == 1
+    assert res[0].uuid == obj1.uuid
+
+    db.update(obj1, hidden=False)
+    res = db.get()
+    assert len(res) == 1
+    assert res[0].uuid == obj1.uuid
+
+    if not allow_hard_delete:
+        with pytest.raises(AssertionError):
+            db.delete(obj1, hide_only=False)
+        db.insert_blob(obj1, 'blob0', data=b'0000')
+        assert len(db.get_blobs(obj1)) == 1
+        with pytest.raises(AssertionError):
+            db.delete_blob(db.get_blobs(obj1)['blob0'], hide_only=False)
+        obj2 = db.insert(name='test2', blob=b'012')
+        rel = db.insert_relationship(first=obj1, second=obj2, type_='t')
+        with pytest.raises(AssertionError):
+            db.delete_relationship(rel, hide_only=False)
+        return
+        
+    db.delete(obj1, hide_only=False)
+    assert len(db.get(include_hidden=True)) == 0
+
+    # Test that you can only delete when there are no dependent blobs left
+    obj2 = db.insert(name='test2', blob=b'012')
+    assert len(db.get()) == 1
+    with pytest.raises(DeletionError):
+        db.delete(obj2, hide_only=False)
+    db.delete_blob(db.get_blobs(obj2)[None])
+    with pytest.raises(DeletionError):
+        db.delete(obj2, hide_only=False)
+    assert len(db.get_blobs(obj2)) == 0
+    assert len(db.get_blobs(obj2, include_hidden=True)) == 1
+    db.update_blob(obj2, None, hidden=False)
+    assert len(db.get_blobs(obj2)) == 1
+    db.delete_blob(db.get_blobs(obj2)[None], hide_only=False)
+    assert len(db.get_blobs(obj2, include_hidden=True)) == 0
+    db.delete(obj2, hide_only=False)
+    assert len(db.get(include_hidden=True)) == 0
+
+    # Test that the blobs are actually deleted
+    obj3 = db.insert(name='test3')
+    blob3 = db.insert_blob(obj3, 't3b', data=b'11')
+    db.delete_blob(blob3)
+    assert len(db.get_blobs(obj3)) == 0
+    assert len(db.get_blobs(obj3, include_hidden=True)) == 1
+    assert db.stash.exists(db.get_blob_key(blob3.uuid))
+    db.delete_blob(blob3, hide_only=False)
+    assert len(db.get_blobs(obj3, include_hidden=True)) == 0
+    assert not db.stash.exists(db.get_blob_key(blob3.uuid))
+
+    # Test deleting relationships
+    test1 = db.insert(name='test1')
+    test2 = db.insert(name='test2')
+    rel = db.insert_relationship(first='test1', second='test2', type_='t')
+    assert len(db.get_relationship(first=test1, second=test2)) == 1
+    db.delete_relationship(rel)
+    assert len(db.get_relationship(first=test1, second=test2)) == 0
+    assert len(db.get_relationship(first=test1, second=test2, include_hidden=True)) == 1
+    db.update_relationship(rel, hidden=False)
+    assert len(db.get_relationship(first=test1, second=test2)) == 1
+    db.delete_relationship(rel, hide_only=False)
+    assert len(db.get_relationship(first=test1, second=test2, include_hidden=True)) == 0
+
+    # Test that you can only delete when there are no dependent relationships left
+    rel = db.insert_relationship(first='test1', second='test2', type_='t')
+    with pytest.raises(DeletionError):
+        db.delete(test1, hide_only=False)
+    with pytest.raises(DeletionError):
+        db.delete(test2, hide_only=False)
 
 
 def simple_blob_test(db):
@@ -387,6 +469,13 @@ def test_simple_extra_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_extra_test(db)
+
+
+def test_simple_real_delete_sqlite_fs(tmp_path):
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path, allow_hard_delete=False)
+    simple_real_delete_test(db, allow_hard_delete=False)
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path, allow_hard_delete=True)
+    simple_real_delete_test(db, allow_hard_delete=True)
 
 
 def test_simple_blobs_sqlite_fs(tmp_path):
