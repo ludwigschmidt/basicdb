@@ -8,3 +8,7 @@ class IntegrityError(Exception):
 
 class NamespaceError(Exception):
     pass
+
+
+class ObjectNotFoundError(Exception):
+    pass

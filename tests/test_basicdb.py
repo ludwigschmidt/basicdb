@@ -7,7 +7,7 @@ from moto import mock_s3
 import pytest
 
 import basicdb
-from basicdb import __version__, BasicDB, DeletionError, IntegrityError, NamespaceError
+from basicdb import __version__, BasicDB, DeletionError, IntegrityError, NamespaceError, ObjectNotFoundError
 
 
 def test_version():
@@ -312,6 +312,14 @@ def simple_blob_test(db):
 
     with pytest.raises(IntegrityError):
         db.update_blob('test1', 'test1', new_name=None)
+    
+    obj3 = db.insert(name='test3')
+    db.insert_blob(obj3, 'new_blob', data=b'123')
+    assert len(db.get_blobs(obj3)) == 1
+    db.delete(obj3)
+    with pytest.raises(ObjectNotFoundError):
+        assert len(db.get_blobs(obj3)) == 1
+    assert len(db.get_blobs(obj3, include_hidden=True)) == 1
 
 
 def simple_relationship_test(db):

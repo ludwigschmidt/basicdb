@@ -341,10 +341,10 @@ class SQLAdapter(DBAdapter):
                         raise exceptions.DeletionError(f'Object {obj.uuid} still has {len(self.get_blobs(obj.uuid))} blobs')
                     num_first_relationships = len(self.get_relationships(first=obj.uuid, include_hidden=True))
                     if num_first_relationships != 0:
-                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the first element in {num_first_relationships} blobs')
+                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the first element in {num_first_relationships} relationships')
                     num_second_relationships = len(self.get_relationships(second=obj.uuid, include_hidden=True))
                     if num_second_relationships != 0:
-                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the second element in {num_second_relationships} blobs')
+                        raise exceptions.DeletionError(f'Object {obj.uuid} still is the second element in {num_second_relationships} relationships')
                     session.delete(obj)
    
     # TODO: merge this into get ?
@@ -429,8 +429,10 @@ class SQLAdapter(DBAdapter):
                 cur_obj = self.get_object_from_identifier(object_identifier,
                                                           check_namespace,
                                                           namespace_to_check,
-                                                          sess)
-                assert cur_obj is not None
+                                                          sess,
+                                                          include_hidden=include_hidden)
+                if cur_obj is None:
+                    raise exceptions.ObjectNotFoundError(object_identifier)
                 options = []
                 filters = [Blob.parent == cur_obj.uuid]
                 if not include_hidden:
