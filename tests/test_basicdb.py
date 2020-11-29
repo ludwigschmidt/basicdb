@@ -322,6 +322,23 @@ def simple_blob_test(db):
     assert len(db.get_blobs(obj3, include_hidden=True)) == 1
 
 
+def blobs_for_multiple_objects_test(db):
+    test1 = db.insert(name='test1', blob=b'11')
+    db.insert_blob(test1, 'blob2', data=b'12')
+    test2 = db.insert(name='test2', blob=b'22')
+    test3 = db.insert(name='test3', blob=b'33')
+    db.insert_blob(test3, 'blob3', data=b'32')
+    objs = [test1, test2, test3]
+    blobs = db.get_blobs(objs)
+    assert set(blobs.keys()) == set([x.uuid for x in objs])
+    assert set(blobs[test1.uuid].keys()) == set([None, 'blob2'])
+    assert set(blobs[test2.uuid].keys()) == set([None])
+    assert set(blobs[test3.uuid].keys()) == set([None, 'blob3'])
+    assert db.load_blobs(test1) == {None: b'11', 'blob2': b'12'}
+    assert db.load_blobs(test2) == {None: b'22'}
+    assert db.load_blobs(test3) == {None: b'33', 'blob3': b'32'}
+
+
 def simple_relationship_test(db):
     test1 = db.insert(name='test1')
     test2 = db.insert(name='test2')
@@ -507,6 +524,13 @@ def test_simple_blobs_namespace_sqlite_fs(tmp_path):
                  stash_rootdir=tmp_path,
                  namespace='test_namespace')
     simple_blob_test(db)
+
+
+def test_multiple_blobs_sqlite_fs(tmp_path):
+    stash_rootdir = tmp_path / 'stash_rootdir'
+    stash_rootdir.mkdir()
+    db = BasicDB(sql_string='sqlite:///:memory:', stash_rootdir=tmp_path)
+    blobs_for_multiple_objects_test(db)
 
 
 def test_simple_relationships_sqlite_fs(tmp_path):

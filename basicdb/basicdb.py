@@ -291,29 +291,51 @@ class BasicDB:
                             username=None):
         raise NotImplementedError
 
-    # Load all blobs for a given object
+    # Load all blobs for a given object or multiple objects
     def get_blobs(self,
                   obj_identifier,
                   return_by='name',
                   include_hidden=False):
-        uuid_or_name = uuid_if_object(obj_identifier)
-        tmp_res = self.db_adapter.get_blobs(object_identifier=uuid_or_name,
-                                            include_hidden=include_hidden,
-                                            check_namespace=self.namespace is not None,
-                                            namespace_to_check=self.namespace)
-        if return_by == 'name':
-            res = {}
-            for blob in tmp_res:
-                res[blob.name] = blob
-        elif return_by == 'uuid':
-            res = {}
-            for blob in tmp_res:
-                res[blob.uuid] = blob
-        elif return_by is None:
-            res = tmp_res
+        if isinstance(obj_identifier, list):
+            for obj in obj_identifier:
+                assert isinstance(obj, Object) or isinstance(obj, uuid.UUID)
+            obj_uuids = [uuid_if_object(x) for x in obj_identifier]
+            tmp_res = self.db_adapter.get_blobs(object_identifier=obj_uuids,
+                                                include_hidden=include_hidden,
+                                                check_namespace=self.namespace is not None,
+                                                namespace_to_check=self.namespace)
+            if return_by == 'name':
+                res = {}
+                for k, v in tmp_res.items():
+                    res[k] = {x.name: x for x in v}
+            elif return_by == 'uuid':
+                res = {}
+                for k, v in tmp_res.items():
+                    res[k] = {x.uuid : x for x in v}
+            elif return_by is None:
+                res = tmp_res
+            else:
+                raise ValueError
+            return res
         else:
-            raise ValueError
-        return res
+            uuid_or_name = uuid_if_object(obj_identifier)
+            tmp_res = self.db_adapter.get_blobs(object_identifier=uuid_or_name,
+                                                include_hidden=include_hidden,
+                                                check_namespace=self.namespace is not None,
+                                                namespace_to_check=self.namespace)
+            if return_by == 'name':
+                res = {}
+                for blob in tmp_res:
+                    res[blob.name] = blob
+            elif return_by == 'uuid':
+                res = {}
+                for blob in tmp_res:
+                    res[blob.uuid] = blob
+            elif return_by is None:
+                res = tmp_res
+            else:
+                raise ValueError
+            return res
 
     # Load blob data either by uuid or by object, name
     def load_blob(self,

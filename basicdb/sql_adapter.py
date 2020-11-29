@@ -425,35 +425,62 @@ class SQLAdapter(DBAdapter):
                   session=None):
         if object_identifier is not None:
             assert uuid is None and uuids is None
-            def query(sess):
-                cur_obj = self.get_object_from_identifier(object_identifier,
-                                                          check_namespace,
-                                                          namespace_to_check,
-                                                          sess,
-                                                          include_hidden=include_hidden)
-                if cur_obj is None:
-                    raise exceptions.ObjectNotFoundError(object_identifier)
-                options = []
-                filters = [Blob.parent == cur_obj.uuid]
-                if not include_hidden:
-                    filters.append(Blob.hidden == False)
-                if match_name:
-                    filters.append(Blob.name == name)
-                inner_res = sess.query(Blob).options(options).filter(*filters).all()
-                if convert_to_public_class:
-                    inner_res = [x.to_public() for x in inner_res] 
-                return inner_res
-            res = self.run_query_with_optional_session(query, session=session)
-            if match_name:
-                assert len(res) <= 1
-                if assert_exists:
-                    assert len(res) == 1
-                if len(res) == 1:
-                    return res[0]
-                else:
-                    return None
+            if isinstance(object_identifier, list):
+                assert not assert_exists
+                assert not match_name
+                assert name is None
+                def query(sess):
+                    cur_objs = self.get_object(uuids=object_identifier,
+                                               filter_namespace=check_namespace,
+                                               namespace=namespace_to_check,
+                                               convert_to_public_class=False,
+                                               session=sess,
+                                               include_hidden=include_hidden)
+                    assert len(cur_objs) == len(object_identifier)
+                    options = []
+                    filters = [Blob.parent.in_(object_identifier)]
+                    if not include_hidden:
+                        filters.append(Blob.hidden == False)
+                    inner_res = sess.query(Blob).options(options).filter(*filters).all()
+                    if convert_to_public_class:
+                        inner_res = [x.to_public() for x in inner_res] 
+                    res_by_parent_uuid = {}
+                    for cr in inner_res:
+                        if cr.parent not in res_by_parent_uuid:
+                            res_by_parent_uuid[cr.parent] = []
+                        res_by_parent_uuid[cr.parent].append(cr)
+                    return res_by_parent_uuid
+                return self.run_query_with_optional_session(query, session=session)
             else:
-                return res
+                def query(sess):
+                    cur_obj = self.get_object_from_identifier(object_identifier,
+                                                              check_namespace,
+                                                              namespace_to_check,
+                                                              sess,
+                                                              include_hidden=include_hidden)
+                    if cur_obj is None:
+                        raise exceptions.ObjectNotFoundError(object_identifier)
+                    options = []
+                    filters = [Blob.parent == cur_obj.uuid]
+                    if not include_hidden:
+                        filters.append(Blob.hidden == False)
+                    if match_name:
+                        filters.append(Blob.name == name)
+                    inner_res = sess.query(Blob).options(options).filter(*filters).all()
+                    if convert_to_public_class:
+                        inner_res = [x.to_public() for x in inner_res] 
+                    return inner_res
+                res = self.run_query_with_optional_session(query, session=session)
+                if match_name:
+                    assert len(res) <= 1
+                    if assert_exists:
+                        assert len(res) == 1
+                    if len(res) == 1:
+                        return res[0]
+                    else:
+                        return None
+                else:
+                    return res
         else:
             assert uuid is not None or uuids is not None
             assert uuid is None or uuids is None
