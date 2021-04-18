@@ -11,7 +11,7 @@ from basicdb import __version__, BasicDB, DeletionError, IntegrityError, Namespa
 
 
 def test_version():
-    assert __version__ == '0.0.12'
+    assert __version__ == '0.0.13'
 
 def simple_test(db):
     db.insert(name='test1',
